@@ -495,3 +495,10 @@ details summary { cursor: pointer; padding: 6px 0; }
 .money-row { flex-wrap: wrap; }
 #f-direction { flex-basis: 100%; display: flex; }
 #f-direction button { flex: 1; }
+
+/* ---------- 报销单预览 ---------- */
+.report { position: fixed; inset: 0; z-index: 25; background: var(--bg); display: flex; flex-direction: column; }
+.report-bar { display: flex; align-items: center; gap: 8px; padding: calc(env(safe-area-inset-top) + 6px) 12px 4px; background: var(--card); }
+.report-title { font-weight: 600; font-size: 15px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.report-actions { display: flex; gap: 8px; flex-wrap: wrap; padding: 6px 12px 10px; background: var(--card); border-bottom: 1px solid var(--line); }
+#report-frame { flex: 1; width: 100%; border: 0; background: #e9ebee; }

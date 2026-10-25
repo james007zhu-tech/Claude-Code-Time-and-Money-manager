@@ -4,10 +4,11 @@ import { parseUtterance, parseRange, rangeOf, timeCatById, catById, TIME_CATS, C
 import { VoiceCapture, speak, stopSpeaking } from './voice.js';
 import { aiParse, aiAnswer } from './ai.js';
 import {
-  fmtMin, fmtHours, fmtMoney, fmtRecMoney, toBase, baseCurrency, summarizeTime, summarizeMoney, compileRules, diagnosis, localAnswer, dataDigest,
+  fmtMin, fmtHours, fmtMoney, fmtRecMoney, toBase, convert, baseCurrency, summarizeTime, summarizeMoney, compileRules, diagnosis, localAnswer, dataDigest,
   ACCOUNT_TYPES, accountType, balanceSheet, netWorthSeries, flowFor, healthCheck, futureValue, avgMonthlyOut,
 } from './analytics.js';
-import { $, esc, uid, store, settings, saveSettings, aiConfig, toast, resetPool, dayKey, dayLabel, barRow, chips } from './ui.js';
+import { $, esc, uid, store, settings, saveSettings, aiConfig, toast, resetPool, dayKey, dayLabel, barRow, chips, download } from './ui.js';
+import { buildReimbursementHtml } from './report.js';
 import { recItem, openDialog, dataChanged } from './sheet.js';
 import { ACCOUNT_TEMPLATES } from './accounts.js';
 
@@ -419,14 +420,114 @@ function reimbCard(pending) {
   const total = pending.reduce((s, r) => s + toBase(r.amount, r.currency), 0);
   return `<div class="card">
     <div class="card-head"><h3>待报销 ${fmtMoney(total)}</h3><button class="btn small" data-settle="all">全部已报</button></div>
-    <p class="muted small">说「报销款到账 3000」会自动帮你核销。</p>
+    <button class="btn primary full" data-w="report">📄 生成报销单（A4，含凭证）</button>
+    <p class="muted small">月底生成报销单交给公司；说「报销款到账 3000」会自动帮你核销。</p>
     ${pending.map(r => `<div class="act-row">
-      <span class="grow">${esc(r.activity || r.note || catById(r.category).name)} <small class="muted">${dayLabel(r.time).split(' ')[0]}</small></span>
+      <span class="grow">${esc(r.activity || r.note || catById(r.category).name)} <small class="muted">${dayLabel(r.time).split(' ')[0]}${r.photos?.length ? '' : ' · 无凭证'}</small>${r.reimbSubmittedAt ? ' <span class="badge done">已提交</span>' : ''}</span>
       <b>${fmtRecMoney(r)}</b>
       <button class="btn small ghost" data-settle="${r.id}">已报</button>
     </div>`).join('')}
   </div>`;
 }
+
+// ---------- 报销单 ----------
+const REPORT_RANGES = [['pending', '所有待报销'], ['month', '本月'], ['lastMonth', '上个月']];
+let lastReport = null;
+
+export async function openReportDialog() {
+  const all = (await db.allRecords()).filter(r => r.reimbursable && !r.reimbursed && r.amount != null);
+  if (!all.length) { toast('没有待报销的支出'); return; }
+  // 报销币种：上次选的；否则公司账户的币种；否则待报销里笔数最多的币种
+  const byCur = {};
+  for (const r of all) byCur[r.currency || 'CNY'] = (byCur[r.currency || 'CNY'] || 0) + 1;
+  const companyAcc = (await db.all('accounts')).find(a => !a.archived && a.owner === 'company');
+  const guessCur = settings.reportCurrency || companyAcc?.currency || Object.entries(byCur).sort((a, b) => b[1] - a[1])[0][0];
+  openDialog('生成报销单', `
+    <div class="field">
+      <label>报销范围</label>
+      <select class="input" name="range">${REPORT_RANGES.map(([k, l]) => `<option value="${k}">${l}</option>`).join('')}</select>
+      <label class="switch-row"><span>包含已提交过的</span><input type="checkbox" name="submitted"></label>
+      <label>报销币种（外币按汇率折算）</label>
+      <select class="input" name="currency">${CURRENCIES.map(c => `<option value="${c.id}"${c.id === guessCur ? ' selected' : ''}>${c.symbol} ${c.name}</option>`).join('')}</select>
+      <label>报销人</label><input class="input" name="person" value="${esc(settings.reportPerson || '')}" placeholder="你的名字">
+      <label>单位 / 部门</label><input class="input" name="org" value="${esc(settings.reportOrg || '')}" placeholder="例如：某某（泰国）有限公司 · 市场部">
+    </div>
+    <p class="hint">一张 A4：抬头、分类汇总（交通费、住宿差旅费、餐饮费……各多少）、明细、大写金额、签字栏。凭证少时（4 张以内）放在同一页，多了另附凭证粘贴页，每页 6 张。</p>
+  `, async el => {
+    const val = n => el.querySelector(`[name=${n}]`);
+    Object.assign(settings, { reportCurrency: val('currency').value, reportPerson: val('person').value.trim(), reportOrg: val('org').value.trim() });
+    saveSettings();
+    const key = val('range').value;
+    const range = key === 'pending' ? null : rangeOf(key);
+    const items = all.filter(r => (!range || (r.time >= range.start && r.time < range.end)) && (val('submitted').checked || !r.reimbSubmittedAt));
+    if (!items.length) throw new Error('这个范围里没有待报销的支出');
+    const period = range ? periodLabel(range) : periodLabel({ start: Math.min(...items.map(r => r.time)), end: Math.max(...items.map(r => r.time)) + 1 });
+    toast('正在排版…');
+    await showReport(items, { currency: settings.reportCurrency, person: settings.reportPerson, org: settings.reportOrg, period });
+  }, { saveLabel: '生成' });
+}
+
+function periodLabel({ start, end }) {
+  const a = new Date(start), b = new Date(end - 1);
+  if (a.getFullYear() === b.getFullYear() && a.getMonth() === b.getMonth()) return `${a.getFullYear()}年${a.getMonth() + 1}月`;
+  return `${dayKey(start)} 至 ${dayKey(end - 1)}`;
+}
+
+// 凭证照片缩到适合打印的大小，转成 dataURL 嵌进单据
+async function photoToDataUrl(blob, max = 1200) {
+  try {
+    const img = await createImageBitmap(blob);
+    const scale = Math.min(1, max / Math.max(img.width, img.height));
+    const c = document.createElement('canvas');
+    c.width = Math.round(img.width * scale); c.height = Math.round(img.height * scale);
+    c.getContext('2d').drawImage(img, 0, 0, c.width, c.height);
+    return c.toDataURL('image/jpeg', 0.8);
+  } catch {
+    return new Promise(resolve => { const r = new FileReader(); r.onload = () => resolve(r.result); r.readAsDataURL(blob); });
+  }
+}
+
+async function showReport(items, opts) {
+  const withPhotos = [];
+  for (const r of items) withPhotos.push({ ...r, photoUrls: await Promise.all((r.photos || []).map(p => photoToDataUrl(p))) });
+  const built = buildReimbursementHtml(withPhotos, { ...opts, convert });
+  lastReport = { ...built, items, opts };
+  const box = $('#report');
+  $('#report-frame').srcdoc = built.html;
+  $('#report-title').textContent = `报销单 · ${opts.period} · ${fmtMoney(built.total, opts.currency)} · ${built.pages} 页`;
+  box.hidden = false;
+  document.body.classList.add('no-scroll');
+  history.pushState({ report: true }, '');
+}
+
+function closeReport(fromPopState = false) {
+  $('#report').hidden = true;
+  document.body.classList.remove('no-scroll');
+  if (!fromPopState && history.state?.report) history.back();
+}
+// 手机返回键关闭报销单预览
+window.addEventListener('popstate', () => { if (!$('#report').hidden) closeReport(true); });
+
+$('#report').addEventListener('click', async e => {
+  const act = e.target.closest('[data-report]')?.dataset.report;
+  if (!act || !lastReport) return;
+  const { html, rows, opts, items } = lastReport;
+  const name = `报销单-${opts.period}`;
+  if (act === 'print') $('#report-frame').contentWindow.print();
+  if (act === 'download') download(`${name}.html`, new Blob([html], { type: 'text/html' }));
+  if (act === 'csv') {
+    const cell = v => `"${String(v ?? '').replace(/"/g, '""')}"`;
+    const lines = [['序号', '日期', '科目', '事项/用途', '说明', '付款方式', '原币', '原币金额', '报销币种', '报销金额', '凭证张数']];
+    for (const r of rows) lines.push([r.no, dayKey(r.time), r.item, r.activity, r.note, r.accountName, currencyById(r.currency).name, r.amount, currencyById(opts.currency).name, Math.round(r.converted * 100) / 100, r.photoUrls.length]);
+    download(`${name}-明细.csv`, new Blob(['﻿' + lines.map(l => l.map(cell).join(',')).join('\r\n')], { type: 'text/csv' }));
+  }
+  if (act === 'submitted') {
+    for (const r of items) await db.putRecord({ ...(await db.getRecord(r.id)), reimbSubmittedAt: Date.now(), updatedAt: Date.now() });
+    toast(`已把 ${items.length} 笔标成「已提交」；报销款到账后说一句就能核销`);
+    dataChanged();
+  }
+  if (act === 'close') closeReport();
+});
 
 function estimateMonthlySaving(records) {
   const d = new Date();
@@ -451,6 +552,7 @@ $('#wealth-body').addEventListener('input', e => {
 $('#wealth-body').addEventListener('click', async e => {
   const w = e.target.closest('[data-w]')?.dataset.w;
   if (w === 'add-account') return accountDialog(null);
+  if (w === 'report') return openReportDialog();
   if (w === 'add-templates') {
     const names = new Set((await db.all('accounts')).filter(a => !a.archived).map(a => a.name));
     const add = ACCOUNT_TEMPLATES.filter(t => !names.has(t.name));

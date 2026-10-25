@@ -6,7 +6,7 @@ import { fmtMin, fmtMoney, fmtRecMoney, toBase, convert, guessAccountType, summa
 import { matchAccount, defaultAccountFor, isCompany } from './accounts.js';
 import { $, $$, esc, uid, store, settings, saveSettings, aiConfig, toast, fmtClock, resetPool } from './ui.js';
 import { openSheet, saveRecord, recItem, sheetOpen, dataChanged } from './sheet.js';
-import { renderReview, renderTime, renderWealth, answerQuestion } from './views.js';
+import { renderReview, renderTime, renderWealth, answerQuestion, openReportDialog } from './views.js';
 import { renderSettings, autoSync } from './settings.js';
 
 // ---------- 页面切换 ----------
@@ -375,7 +375,7 @@ export async function ensureNotifyPermission() {
 export function nudge(title, body, action = 'record') {
   $('#banner-title').textContent = title;
   $('#banner-body').textContent = body;
-  $('#banner-go').textContent = action === 'finish' ? '做完了' : '说一句';
+  $('#banner-go').textContent = { finish: '做完了', reimb: '生成报销单' }[action] || '说一句';
   $('#banner-go').dataset.action = action;
   if (!sheetOpen()) $('#banner').hidden = false;
   navigator.vibrate?.(200);
@@ -394,6 +394,7 @@ $('#banner-close').addEventListener('click', () => { $('#banner').hidden = true;
 
 function handleAction(action) {
   if (sheetOpen()) return;
+  if (action === 'reimb') { showView('wealth'); openReportDialog(); return; }
   showView('home');
   if (action === 'finish' && getActivity()) finishActivity(null);
   else if (action === 'record') $('#hero-mic').click();
@@ -422,6 +423,20 @@ function tick() {
   }
 }
 setInterval(tick, 20000);
+
+// 月底（最后两天）和月初（头两天）提醒一次：把待报销的整理成报销单
+async function reimbursementReminder() {
+  const d = new Date();
+  const last = new Date(d.getFullYear(), d.getMonth() + 1, 0).getDate();
+  if (d.getDate() < last - 1 && d.getDate() > 2) return;
+  const key = d.getDate() <= 2 ? `${d.getFullYear()}-${d.getMonth()}` : `${d.getFullYear()}-${d.getMonth() + 1}`;
+  if (store.get('reimbNudged') === key || d.getHours() < 9) return;
+  const pending = (await db.allRecords()).filter(r => r.reimbursable && !r.reimbursed && !r.reimbSubmittedAt && r.amount != null);
+  if (!pending.length) return;
+  store.set('reimbNudged', key);
+  nudge(`月底了：${pending.length} 笔待报销`, '一键生成报销单（含凭证），打印或存成 PDF 交给公司', 'reimb');
+}
+setInterval(reimbursementReminder, 10 * 60000);
 document.addEventListener('visibilitychange', () => {
   if (document.hidden) return;
   tick();
@@ -450,5 +465,6 @@ if ('serviceWorker' in navigator) {
     handleAction(action);
   }
   tick();
+  reimbursementReminder();
   if (await autoSync()) refresh();
 })();

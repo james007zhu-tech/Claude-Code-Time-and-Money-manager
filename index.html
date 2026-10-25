@@ -263,6 +263,21 @@
     </div>
   </div>
 
+  <!-- 报销单预览 -->
+  <div id="report" class="report" hidden>
+    <div class="report-bar">
+      <button class="link" data-report="close">关闭</button>
+      <span id="report-title" class="report-title"></span>
+    </div>
+    <div class="report-actions">
+      <button class="btn primary small" data-report="print">🖨️ 打印 / 存 PDF</button>
+      <button class="btn small" data-report="download">下载单据</button>
+      <button class="btn small" data-report="csv">明细表（Excel）</button>
+      <button class="btn small ghost" data-report="submitted">标记为已提交</button>
+    </div>
+    <iframe id="report-frame" title="报销单"></iframe>
+  </div>
+
   <div id="viewer" class="viewer" hidden><img alt="凭证"></div>
   <div id="toast" class="toast" hidden></div>
 

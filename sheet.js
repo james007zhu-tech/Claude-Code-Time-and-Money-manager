@@ -22,7 +22,7 @@ export function recItem(r, pool) {
   if (r.amount != null && !isTransfer) meta.push(c.name);
   if (r.accountName && !isTransfer) meta.push(esc(r.accountName));
   if (r.company) meta.push('<span class="badge company">公司</span>');
-  if (r.reimbursable) meta.push(r.reimbursed ? '<span class="badge done">已报销</span>' : '<span class="badge">待报销</span>');
+  if (r.reimbursable) meta.push(r.reimbursed ? '<span class="badge done">已报销</span>' : r.reimbSubmittedAt ? '<span class="badge">已提交</span>' : '<span class="badge">待报销</span>');
   if (r.audio) meta.push('🔊');
   if (r.photos?.length > 1) meta.push(`📎${r.photos.length}`);
   const title = r.activity || r.note || c.name;
