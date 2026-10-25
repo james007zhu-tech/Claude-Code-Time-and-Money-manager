@@ -93,3 +93,17 @@ export class VoiceCapture {
     };
   }
 }
+
+// 朗读回答
+export function speak(text) {
+  if (!window.speechSynthesis || !text) return false;
+  speechSynthesis.cancel();
+  const u = new SpeechSynthesisUtterance(text);
+  u.lang = 'zh-CN';
+  u.rate = 1.05;
+  const zh = speechSynthesis.getVoices().find(v => /zh[-_]CN/i.test(v.lang));
+  if (zh) u.voice = zh;
+  speechSynthesis.speak(u);
+  return true;
+}
+export const stopSpeaking = () => window.speechSynthesis?.cancel();

@@ -6,16 +6,16 @@
   <meta name="theme-color" content="#12a37b">
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="mobile-web-app-capable" content="yes">
-  <meta name="apple-mobile-web-app-title" content="语音记账">
-  <meta name="description" content="做完一件事，拍下凭证、说一句话，就记好一笔账">
+  <meta name="apple-mobile-web-app-title" content="时间账本">
+  <meta name="description" content="说一句话，记下时间和钱；随时问「这几天我干了什么」">
   <link rel="manifest" href="manifest.webmanifest">
   <link rel="icon" href="icons/icon.svg" type="image/svg+xml">
   <link rel="apple-touch-icon" href="icons/icon-192.png">
   <link rel="stylesheet" href="styles.css">
-  <title>语音记账</title>
+  <title>时间账本</title>
 </head>
 <body>
-  <header class="topbar"><h1 id="view-title">语音记账</h1></header>
+  <header class="topbar"><h1 id="view-title">时间账本</h1></header>
 
   <div id="banner" class="banner" hidden>
     <div class="banner-text"><b id="banner-title"></b><span id="banner-body"></span></div>
@@ -26,51 +26,85 @@
   </div>
 
   <main>
-    <!-- 首页 -->
-    <section id="view-home" class="view active" data-title="语音记账">
-      <div id="activity-card" class="card"></div>
+    <!-- 首页：说一句 -->
+    <section id="view-home" class="view active" data-title="时间账本">
+      <div class="card hero">
+        <button id="hero-mic" class="mic big" aria-label="说一句">🎙️</button>
+        <div id="hero-hint" class="hero-hint">点一下，说一句</div>
+        <div id="hero-live" class="live" hidden></div>
+        <form id="hero-form" class="ask-row">
+          <input id="hero-input" class="input" placeholder="或者打字：午饭35块 / 开始写方案" enterkeyhint="send" autocomplete="off">
+          <button class="btn primary">发送</button>
+        </form>
+        <div id="hero-examples" class="examples"></div>
+      </div>
 
-      <button id="btn-new" class="btn primary huge">🎙️ 记一笔</button>
-      <p class="hint center">拍凭证 + 说一句「干了什么、花了多少」，自动识别金额</p>
+      <div id="activity-card" class="card" hidden></div>
+
+      <div class="quick-row">
+        <button id="btn-photo" class="btn">📷 拍凭证记一笔</button>
+        <button id="btn-new" class="btn">✍️ 手动记</button>
+      </div>
 
       <div class="card">
-        <div class="card-head">
-          <span>今天</span>
-          <span><b id="today-total">¥0</b> · <span id="today-count">0</span> 笔</span>
-        </div>
+        <div class="card-head"><span>今天</span><span id="today-summary"></span></div>
         <ul id="today-list" class="rec-list"></ul>
       </div>
     </section>
 
-    <!-- 账单 -->
-    <section id="view-list" class="view" data-title="账单">
-      <div class="month-nav" data-month-nav></div>
-      <input id="search" class="input" type="search" placeholder="搜索说明、事项、类别">
-      <div id="list-summary" class="list-summary"></div>
-      <div id="list-days"></div>
+    <!-- 回顾：这几天/这几年干了什么 -->
+    <section id="view-review" class="view" data-title="回顾">
+      <form id="ask-form" class="ask-row">
+        <button type="button" id="ask-mic" class="mic small" aria-label="语音提问">🎙️</button>
+        <input id="ask-input" class="input" placeholder="问：这几天我干了什么？" enterkeyhint="search" autocomplete="off">
+        <button class="btn primary">问</button>
+      </form>
+      <div id="review-ranges" class="chips"></div>
+      <div id="review-answer" class="card answer" hidden></div>
+      <div id="review-body"></div>
     </section>
 
-    <!-- 统计 -->
-    <section id="view-stats" class="view" data-title="统计">
-      <div class="month-nav" data-month-nav></div>
-      <div id="stats"></div>
+    <!-- 时间：德鲁克 -->
+    <section id="view-time" class="view" data-title="时间管理">
+      <div id="time-ranges" class="chips"></div>
+      <div id="time-body"></div>
+    </section>
+
+    <!-- 财富：巴菲特 -->
+    <section id="view-wealth" class="view" data-title="财富管理">
+      <div id="wealth-body"></div>
     </section>
 
     <!-- 设置 -->
     <section id="view-settings" class="view" data-title="设置">
       <div class="card">
+        <h3>电脑端时间记录</h3>
+        <p class="hint">在 Mac / Windows 电脑上运行一个小程序，自动记录每个时间段在用什么软件，汇总到这里分析。</p>
+        <div class="btn-row">
+          <a class="btn small" href="agent/timeagent.py" download>下载电脑记录器</a>
+          <button id="s-sync-folder" class="btn small" hidden>选择同步文件夹</button>
+          <button id="s-sync-now" class="btn small" hidden>立即同步</button>
+          <button id="s-import-usage" class="btn small">导入记录文件</button>
+          <input id="s-import-usage-file" type="file" accept="application/json,.json" multiple hidden>
+        </div>
+        <p class="hint" id="s-sync-state"></p>
+        <details>
+          <summary>软件归类规则</summary>
+          <p class="hint">每行一条：关键词用 | 分隔，=> 后面是类别（deep 要事，meeting 沟通，admin 杂务，learn 学习，leisure 休闲，family 生活，health 健康）。按软件名、窗口标题、网址匹配。</p>
+          <textarea id="s-rules" class="input mono" rows="7"></textarea>
+          <button id="s-rules-reset" class="btn small ghost">恢复默认</button>
+        </details>
+      </div>
+
+      <div class="card">
         <h3>提醒</h3>
-        <p class="hint">在首页「开始」一件事并设定预计时长，到点会提醒你录入；也可以打开下面的定时提醒。</p>
-        <label class="switch-row"><span>定时提醒我记账</span><input id="s-remind" type="checkbox"></label>
+        <p class="hint">说「开始…」并设预计时长，到点会提醒；也可以打开定时提醒。</p>
+        <label class="switch-row"><span>定时提醒我记录</span><input id="s-remind" type="checkbox"></label>
         <div class="setting-row">
-          <span>多久没记账就提醒</span>
+          <span>多久没记录就提醒</span>
           <select id="s-every" class="input inline">
-            <option value="30">30 分钟</option>
-            <option value="60">1 小时</option>
-            <option value="90">1.5 小时</option>
-            <option value="120">2 小时</option>
-            <option value="180">3 小时</option>
-            <option value="240">4 小时</option>
+            <option value="30">30 分钟</option><option value="60">1 小时</option><option value="90">1.5 小时</option>
+            <option value="120">2 小时</option><option value="180">3 小时</option><option value="240">4 小时</option>
           </select>
         </div>
         <div class="setting-row">
@@ -82,18 +116,30 @@
           <button id="s-notify" class="btn small">开启通知</button>
         </div>
         <button id="s-test" class="btn small ghost">发一条测试提醒</button>
-        <p class="hint">手机上请先「添加到主屏幕」再开启通知。网页版提醒需要应用在后台保持打开；关掉应用后系统可能不会再提醒。</p>
       </div>
 
       <div class="card">
         <h3>语音</h3>
         <label class="switch-row"><span>同时保存原始录音</span><input id="s-audio" type="checkbox"></label>
+        <label class="switch-row"><span>自动朗读回答</span><input id="s-speak" type="checkbox"></label>
         <p class="hint" id="s-voice-state"></p>
       </div>
 
       <div class="card">
+        <h3>AI 理解（可选）</h3>
+        <p class="hint">不开也能用。开启后用 Claude 理解更随意的说法、回答「这几年干了什么」这类问题。需要你自己的 Anthropic API Key（只保存在本机，按用量付费）。提问时会把相关记录发给 Anthropic。</p>
+        <label class="switch-row"><span>开启 AI 理解</span><input id="s-ai" type="checkbox"></label>
+        <input id="s-key" class="input" type="password" placeholder="sk-ant-…" autocomplete="off">
+        <div class="setting-row">
+          <span>模型</span>
+          <select id="s-model" class="input inline"></select>
+        </div>
+        <button id="s-ai-test" class="btn small">测试连接</button>
+      </div>
+
+      <div class="card">
         <h3>数据</h3>
-        <p class="hint">数据只保存在这台设备的浏览器里。换手机或清理浏览器前，记得导出备份。</p>
+        <p class="hint">数据只保存在这台设备。手机和电脑之间可以用「完整备份」互相导入（同一条记录不会重复）。</p>
         <div class="btn-row">
           <button id="s-csv" class="btn small">导出表格 (CSV)</button>
           <button id="s-backup" class="btn small">导出完整备份</button>
@@ -106,13 +152,14 @@
   </main>
 
   <nav class="tabbar">
-    <button data-view="home" class="active"><span>🏠</span>首页</button>
-    <button data-view="list"><span>📒</span>账单</button>
-    <button data-view="stats"><span>📊</span>统计</button>
+    <button data-view="home" class="active"><span>🎙️</span>记录</button>
+    <button data-view="review"><span>🗓️</span>回顾</button>
+    <button data-view="time"><span>⏳</span>时间</button>
+    <button data-view="wealth"><span>💰</span>财富</button>
     <button data-view="settings"><span>⚙️</span>设置</button>
   </nav>
 
-  <!-- 记一笔 -->
+  <!-- 记录编辑 -->
   <div id="sheet" class="sheet" hidden>
     <div class="sheet-panel">
       <div class="sheet-head">
@@ -122,53 +169,65 @@
       </div>
       <div class="sheet-body">
         <div class="field">
-          <label>① 消费凭证</label>
-          <div id="photo-list" class="photos"></div>
-          <div class="btn-row">
-            <button id="btn-camera" class="btn">📷 拍凭证</button>
-            <button id="btn-gallery" class="btn">🖼️ 从相册选</button>
-          </div>
-          <input id="in-camera" type="file" accept="image/*" capture="environment" hidden>
-          <input id="in-gallery" type="file" accept="image/*" multiple hidden>
-        </div>
-
-        <div class="field">
-          <label>② 说一句：干了什么、花了多少</label>
+          <label for="f-activity">做了什么</label>
+          <input id="f-activity" class="input" placeholder="例如：拜访客户、写方案">
           <div class="voice">
             <button id="btn-mic" class="mic" aria-label="开始说话">🎙️</button>
-            <div id="mic-hint" class="hint">点一下开始说，说完再点一下</div>
+            <div id="mic-hint" class="hint">点一下补充说明，说完再点一下</div>
             <div id="live-text" class="live" hidden></div>
             <div id="audio-box" class="audio-box" hidden>
               <audio id="audio-preview" controls></audio>
               <button id="btn-audio-del" class="link danger-text">删除录音</button>
             </div>
           </div>
-          <textarea id="f-note" class="input" rows="3" placeholder="例如：和客户吃午饭，花了一百二十八块"></textarea>
-        </div>
-
-        <div class="field two">
-          <div>
-            <label for="f-amount">金额 ¥ <small id="amount-auto" class="tag" hidden>自动</small></label>
-            <input id="f-amount" class="input amount" type="number" inputmode="decimal" step="0.01" min="0" placeholder="0">
-          </div>
-          <div>
-            <label for="f-time">时间</label>
-            <input id="f-time" class="input" type="datetime-local">
-          </div>
+          <textarea id="f-note" class="input" rows="2" placeholder="说明，例如：和客户吃午饭，花了一百二十八块"></textarea>
         </div>
 
         <div class="field">
-          <label>类别</label>
+          <label>⏱ 时间</label>
+          <div class="grid2">
+            <div><small class="muted">开始</small><input id="f-time" class="input" type="datetime-local"></div>
+            <div><small class="muted">用了几分钟</small><input id="f-duration" class="input" type="number" inputmode="numeric" min="0" placeholder="不记时间可空着"></div>
+          </div>
+          <div id="f-timecats" class="chips"></div>
+        </div>
+
+        <div class="field">
+          <label>¥ 钱 <small id="amount-auto" class="tag" hidden>自动识别</small></label>
+          <div class="money-row">
+            <div class="seg" id="f-direction">
+              <button data-dir="out" class="active">支出</button><button data-dir="in">收入</button>
+            </div>
+            <input id="f-amount" class="input amount" type="number" inputmode="decimal" step="0.01" min="0" placeholder="0">
+          </div>
           <div id="f-cats" class="chips"></div>
         </div>
 
         <div class="field">
-          <label for="f-activity">关联事项 <small id="f-duration" class="tag" hidden></small></label>
-          <input id="f-activity" class="input" placeholder="可选，例如：拜访客户">
+          <label>凭证</label>
+          <div id="photo-list" class="photos"></div>
+          <div class="btn-row">
+            <button id="btn-camera" class="btn">📷 拍凭证</button>
+            <button id="btn-gallery" class="btn">🖼️ 相册</button>
+          </div>
+          <input id="in-camera" type="file" accept="image/*" capture="environment" hidden>
+          <input id="in-gallery" type="file" accept="image/*" multiple hidden>
         </div>
 
-        <button id="btn-delete" class="btn danger full" hidden>删除这笔</button>
+        <button id="btn-delete" class="btn danger full" hidden>删除这条</button>
       </div>
+    </div>
+  </div>
+
+  <!-- 通用弹层（账户、投资日记） -->
+  <div id="dialog" class="sheet" hidden>
+    <div class="sheet-panel">
+      <div class="sheet-head">
+        <button id="dialog-cancel" class="link">取消</button>
+        <h2 id="dialog-title"></h2>
+        <button id="dialog-save" class="link strong">保存</button>
+      </div>
+      <div id="dialog-body" class="sheet-body"></div>
     </div>
   </div>
 

@@ -1,7 +1,7 @@
 {
-  "name": "语音记账",
-  "short_name": "语音记账",
-  "description": "做完一件事，拍下凭证、说一句话，就记好一笔账",
+  "name": "时间账本",
+  "short_name": "时间账本",
+  "description": "说一句话，记下时间和钱；随时问「这几天我干了什么」",
   "lang": "zh-CN",
   "start_url": "./",
   "scope": "./",
@@ -14,6 +14,6 @@
     { "src": "icons/icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any maskable" }
   ],
   "shortcuts": [
-    { "name": "记一笔", "url": "./?action=record" }
+    { "name": "说一句", "url": "./?action=record" }
   ]
 }
