@@ -107,7 +107,7 @@ function findAmounts(src) {
     rest = rest.replace(re, (m, ...args) => {
       const index = args[args.length - 2];
       const v = toValue(...args);
-      if (v > 0 && Number.isFinite(v)) found.push({ index, length: m.length, value: round2(v), currency: currency || defaultCurrency });
+      if (v > 0 && Number.isFinite(v)) found.push({ index, length: m.length, value: round2(v), currency: currency || defaultCurrency, explicit: !!currency });
       return ' '.repeat(m.length);
     });
   };
@@ -130,25 +130,30 @@ function findAmounts(src) {
     take(new RegExp(`(?:花了|花费|付了|付款|支付|消费|一共|总共|共计|合计|总计|掏了|用了|余额|还剩|还有|到账|收到|进账|入账|赚了|市值|欠了|欠|发了|是)\\s*(${NUM})(?![${CN_CHARS}\\d]*\\s*(?:个|点|小时|分钟|天|号|月|年|岁|人|次))`, 'g'),
       /人民币|rmb/i.test(src) ? 'CNY' : /泰铢|泰币|baht/i.test(src) ? 'THB' : /美元|美金|usd/i.test(src) ? 'USD' : null, num);
   }
+  if (!found.length) {
+    // 「买水果80」「充话费100」：买/付/充/交之后、句末的数字
+    take(new RegExp(`(?<=(?:买|付|刷|充|交|给)[^\\d，,。]{0,10})(\\d+(?:\\.\\d+)?)\\s*$`, 'g'), null, num);
+  }
   return found.sort((a, b) => a.index - b.index);
 }
 
 // 金额和币种；一句话里有多种币种时，取第一种（其余留在说明里）
 export function parseMoney(text) {
-  if (!text) return { amount: null, currency: null };
+  if (!text) return { amount: null, currency: null, explicit: false };
   const src = String(text).replace(/(\d),(\d{3})/g, '$1$2');
   const all = findAmounts(src);
-  if (!all.length) return { amount: null, currency: null };
+  if (!all.length) return { amount: null, currency: null, explicit: false };
   const currency = all[0].currency;
+  const explicit = all[0].explicit;
   const found = all.filter(f => f.currency === currency);
   // 说了「一共/总共」就以它为准，否则把几笔加起来
   const totalKw = /一共|总共|共计|合计|总计/g;
   let km;
   while ((km = totalKw.exec(src))) {
     const after = found.find(f => f.index >= km.index && f.index - (km.index + km[0].length) <= 4);
-    if (after) return { amount: after.value, currency };
+    if (after) return { amount: after.value, currency, explicit };
   }
-  return { amount: round2(found.reduce((s, f) => s + f.value, 0)), currency };
+  return { amount: round2(found.reduce((s, f) => s + f.value, 0)), currency, explicit };
 }
 export const parseAmount = text => parseMoney(text).amount;
 
@@ -325,6 +330,9 @@ export function parseUtterance(text, now = Date.now()) {
     return { type: 'start', title: cleanTitle(title), timeCat: guessTimeCat(title), planMin: parseDuration(start[5]) || 0 };
   }
 
+  const transfer = parseTransfer(s);
+  if (transfer) return { type: 'transfer', ...transfer, text: raw };
+
   const { amount, currency } = parseMoney(s);
   const bal = /(余额|还剩|现在有|里有|账上|市值|总值|估值|还欠|欠款|欠了|房贷|车贷|信用卡|负债|贷款)/.exec(s);
   if (bal && amount != null && !/花|买|付/.test(s.replace(/支付宝/g, ''))) {
@@ -338,9 +346,39 @@ export function parseUtterance(text, now = Date.now()) {
   return { type: 'entry', ...parseEntry(s, now) };
 }
 
+// 账户之间转钱 / 取现 / 换汇：
+//   从支付宝转5000到微信；从个人泰铢卡取了2000现金；从人民币卡换了1万到泰铢卡，换成4万8泰铢
+// 转账里常只说数字（「转5000」），币种按账户定，这里返回 currency=null
+function moneyOrNumber(str) {
+  const m = parseMoney(str);
+  if (m.amount != null) return m;
+  const n = new RegExp(NUM).exec(str);
+  const v = n ? cnToNumber(n[0]) : null;
+  return { amount: v > 0 ? round2(v) : null, currency: null };
+}
+
+export function parseTransfer(text) {
+  const s = String(text);
+  let m = /^(?:我)?(?:今天|刚才|刚刚)?从(.{1,12}?)(?:转账?|转出|转了|划了?|换了?|汇了?|充了?)(.+?)(?:到|进|给|去|存入|存到)(.{1,12}?)(?:[，,。\s]+(?:换成|到账|得到|变成|实际到了?)(.+))?$/.exec(s);
+  if (m) {
+    const { amount, currency } = moneyOrNumber(m[2]);
+    if (amount == null) return null;
+    const to = m[4] ? moneyOrNumber(m[4]) : { amount: null, currency: null };
+    return { from: m[1].trim(), to: m[3].trim(), amount, currency, toAmount: to.amount, toCurrency: to.currency };
+  }
+  // 取现：从 X 取了 2000（现金）
+  m = /^(?:我)?(?:今天|刚才|刚刚)?(?:从|在)(.{1,12}?)(?:取了?|取现|提现|提了?)(.+?)$/.exec(s);
+  if (m) {
+    const { amount, currency } = moneyOrNumber(m[2].replace(/现金|出来/g, ''));
+    if (amount == null) return null;
+    return { from: m[1].trim(), to: '现金', amount, currency, toAmount: null, toCurrency: null };
+  }
+  return null;
+}
+
 export function parseEntry(text, now = Date.now()) {
   const s = String(text);
-  const { amount, currency } = parseMoney(s);
+  const { amount, currency, explicit } = parseMoney(s);
   const income = amount != null && /(工资|薪水|薪资|收入|到账|收到|奖金|分红|利息|进账|赚了|入账|报销款|报销回来|报销下来|退款|发了|提成|稿费)/.test(s);
   const time = parseTimeInfo(s, now);
   return {
@@ -348,6 +386,7 @@ export function parseEntry(text, now = Date.now()) {
     note: s.trim(),
     amount,
     currency: amount == null ? null : currency,
+    currencyExplicit: !!explicit,   // 没明说币种时，按付款账户的币种
     reimbursable: !income && amount != null && parseReimburse(s) === true,
     direction: income ? 'in' : 'out',
     category: amount == null ? null : income ? guessIncomeCategory(s) : guessCategory(s) || 'other',
@@ -362,6 +401,8 @@ function stripForTitle(s) {
   for (const f of findAmounts(t).reverse()) t = t.slice(0, f.index) + t.slice(f.index + f.length);
   t = t.replace(new RegExp(`${CLOCK}\\s*(?:到|至|-|~|—|－)\\s*${CLOCK}`, 'g'), ' ')
     .replace(new RegExp(`(${NUM}|半)\\s*(?:个)?\\s*(半)?\\s*(小时|钟头|分钟)(半)?`, 'g'), ' ')
+    .replace(/(用|拿|通过)[^，,\s]{1,8}?(付|支付|刷|结|转)(的|了|款)?|(微信|支付宝|现金|刷卡)(付了?|支付了?|付的)/g, ' ')
+    .replace(/(用|拿|通过)(现金|微信|支付宝|公司卡|[^，,\s]{0,6}?卡)/g, ' ')
     .replace(/(花了|花费|付了|一共|总共|用了|大概|左右|差不多)/g, ' ')
     .replace(/[，,\s]*(这笔|这个|这些)?(要|需要|可以|能|找公司)(报销|报账)(的)?|[，,\s]*(公司出|公司付|公费)/g, ' ');
   return t.trim() || s;

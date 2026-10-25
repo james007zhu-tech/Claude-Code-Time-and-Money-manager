@@ -79,7 +79,7 @@ export function summarizeTime(events, usage, range, rules = compileRules(DEFAULT
     byCat[cat] = (byCat[cat] || 0) + min;
     const title = e.activity || e.note?.slice(0, 20) || timeCatById(cat).name;
     const t = byTitle.get(title) || { title, min: 0, n: 0, cat, money: 0 };
-    t.min += min; t.n++; t.money += e.direction !== 'in' ? toBase(e.amount, e.currency) : 0;
+    t.min += min; t.n++; t.money += isPersonalOut(e) ? toBase(e.amount, e.currency) : 0;
     byTitle.set(title, t);
   }
   const device = { total: 0, byCat: {}, byApp: new Map(), byDevice: {} };
@@ -149,15 +149,19 @@ export function diagnosis(titles, tags, weeks) {
 }
 
 // ---------- 钱 ----------
+// 个人支出：不是收入、不是转账、不是公司账户付的
+export const isPersonalOut = e => e.direction !== 'in' && e.direction !== 'transfer' && !e.company;
 // 金额都换算成本位币。要报销的支出不算自己的花费，报销款到账也不算收入，单独统计。
+// 公司账户的收支是公司的钱（company），转账（direction=transfer）只是钱换了个地方，都不算个人收支。
 export function summarizeMoney(events, range) {
-  let out = 0, inc = 0, reimbPending = 0, reimbDone = 0, refundIn = 0;
+  let out = 0, inc = 0, reimbPending = 0, reimbDone = 0, refundIn = 0, companyOut = 0, companyIn = 0;
   const byCat = {}, byIncome = {}, byCurrency = {};
   const list = [], pending = [];
   for (const e of events) {
-    if (e.amount == null || e.time < range.start || e.time >= range.end) continue;
-    list.push(e);
+    if (e.amount == null || e.direction === 'transfer' || e.time < range.start || e.time >= range.end) continue;
     const v = toBase(e.amount, e.currency);
+    if (e.company) { if (e.direction === 'in') companyIn += v; else companyOut += v; continue; }
+    list.push(e);
     const cur = e.currency || 'CNY';
     const c = (byCurrency[cur] ??= { out: 0, in: 0 });
     if (e.direction === 'in') {
@@ -178,12 +182,15 @@ export function summarizeMoney(events, range) {
     out: round2(out), in: round2(inc), net: round2(inc - out), byCat, byIncome, biggest, count: list.length,
     byCurrency, multiCurrency: Object.keys(byCurrency).length > 1,
     reimbPending: round2(reimbPending), reimbDone: round2(reimbDone), refundIn: round2(refundIn), pending,
+    companyOut: round2(companyOut), companyIn: round2(companyIn),
   };
 }
 
 // 资产负债：每个账户取 at 之前最新的余额
 export const ACCOUNT_TYPES = [
-  { id: 'cash', name: '现金/活期', icon: '💳', liquid: true },
+  { id: 'cash', name: '现金', icon: '💵', liquid: true },
+  { id: 'bank', name: '银行卡/活期', icon: '💳', liquid: true },
+  { id: 'wallet', name: '微信/支付宝', icon: '📱', liquid: true },
   { id: 'deposit', name: '定期存款', icon: '🏦', liquid: true },
   { id: 'fund', name: '基金/指数', icon: '📊', invest: true },
   { id: 'stock', name: '股票', icon: '📈', invest: true },
@@ -204,33 +211,63 @@ export function guessAccountType(name, liability) {
   if (/定期|存单/.test(name)) return 'deposit';
   if (/房|车/.test(name)) return 'property';
   if (/保险|公积金|养老金|社保/.test(name)) return 'insurance';
-  return 'cash';
+  if (/微信|支付宝|wechat|alipay|钱包|truemoney/i.test(name)) return 'wallet';
+  if (/现金|cash/i.test(name)) return 'cash';
+  return 'bank';
 }
 
-export function balanceSheet(accounts, balances, at = Date.now()) {
+// 把金额从一种货币换成另一种
+export const convert = (amount, from, to) => (amount || 0) * (FX.rates[from || 'CNY'] ?? 1) / (FX.rates[to || 'CNY'] ?? 1);
+
+// 一笔记录对某个账户余额的影响（按账户币种）
+export function flowFor(r, account) {
+  const cur = account.currency || 'CNY';
+  if (r.amount == null) return 0;
+  if (r.direction === 'transfer') {
+    if (r.accountId === account.id) return -convert(r.amount, r.currency, cur);
+    if (r.toAccountId === account.id) return r.toAmount != null ? convert(r.toAmount, r.toCurrency || cur, cur) : convert(r.amount, r.currency, cur);
+    return 0;
+  }
+  if (r.accountId !== account.id) return 0;
+  const v = convert(r.amount, r.currency, cur);
+  // 负债账户（信用卡）：花钱是欠款增加
+  const liability = accountType(account.type).liability;
+  return (r.direction === 'in' ? 1 : -1) * (liability ? -1 : 1) * v;
+}
+
+// 账户余额 = at 之前最近一次核对的余额 + 之后的流水；公司账户单独统计，不算个人净资产
+export function balanceSheet(accounts, balances, at = Date.now(), records = []) {
   const latest = new Map();
   for (const b of balances) {
     if (b.time > at) continue;
     const cur = latest.get(b.accountId);
     if (!cur || b.time > cur.time) latest.set(b.accountId, b);
   }
-  let assets = 0, liabilities = 0, liquid = 0, invest = 0, consumerDebt = 0;
+  let assets = 0, liabilities = 0, liquid = 0, invest = 0, consumerDebt = 0, company = 0;
   const rows = [];
   for (const a of accounts) {
     if (a.archived) continue;
     const b = latest.get(a.id);
-    const raw = b?.value ?? 0;
+    const since = b?.time ?? -Infinity;
+    let raw = b?.value ?? 0, flows = 0;
+    for (const r of records) {
+      if (r.time <= since || r.time > at) continue;
+      const f = flowFor(r, a);
+      if (f) { raw += f; flows++; }
+    }
+    raw = round2(raw);
     const v = toBase(raw, a.currency);
     const t = accountType(a.type);
-    rows.push({ account: a, value: v, raw, currency: a.currency || 'CNY', updated: b?.time ?? null, type: t });
+    rows.push({ account: a, value: v, raw, currency: a.currency || 'CNY', updated: b?.time ?? null, flows, type: t, company: a.owner === 'company' });
+    if (a.owner === 'company') { company += t.liability ? -v : v; continue; }
     if (t.liability) { liabilities += v; if (t.consumer) consumerDebt += v; }
     else { assets += v; if (t.liquid) liquid += v; if (t.invest) invest += v; }
   }
-  return { assets, liabilities, net: assets - liabilities, liquid, invest, consumerDebt, rows };
+  return { assets, liabilities, net: assets - liabilities, liquid, invest, consumerDebt, company, rows };
 }
 
-// 每月末净资产（只在有余额记录之后才有值）
-export function netWorthSeries(accounts, balances, months = 12, now = Date.now()) {
+// 每月末个人净资产（只在有余额记录之后才有值）
+export function netWorthSeries(accounts, balances, months = 12, now = Date.now(), records = []) {
   if (!balances.length) return [];
   const first = Math.min(...balances.map(b => b.time));
   const d = new Date(now);
@@ -238,7 +275,7 @@ export function netWorthSeries(accounts, balances, months = 12, now = Date.now()
   for (let i = months - 1; i >= 0; i--) {
     const end = new Date(d.getFullYear(), d.getMonth() - i + 1, 1).getTime() - 1;
     if (end < first) continue;
-    out.push({ label: `${new Date(end).getMonth() + 1}月`, value: balanceSheet(accounts, balances, Math.min(end, now)).net });
+    out.push({ label: `${new Date(end).getMonth() + 1}月`, value: balanceSheet(accounts, balances, Math.min(end, now), records).net });
   }
   return out;
 }
@@ -265,7 +302,7 @@ export function avgMonthlyOut(events, months = 3, now = Date.now()) {
   const end = new Date(d.getFullYear(), d.getMonth(), 1).getTime();
   const firstEvent = Math.min(...events.filter(e => e.amount != null).map(e => e.time), end);
   const span = Math.max(1, Math.round((end - Math.max(start, firstEvent)) / (30 * DAY)));
-  const out = events.filter(e => e.amount != null && e.direction !== 'in' && !e.reimbursable && e.time >= start && e.time < end).reduce((s, e) => s + toBase(e.amount, e.currency), 0);
+  const out = events.filter(e => e.amount != null && isPersonalOut(e) && !e.reimbursable && e.time >= start && e.time < end).reduce((s, e) => s + toBase(e.amount, e.currency), 0);
   return out ? out / span : 0;
 }
 
@@ -329,7 +366,8 @@ export function dataDigest(q, { events, usage, rules, sheet }) {
     e.activity || '',
     e.note || '',
     e.durationMin ? `用时${e.durationMin}分钟` : '',
-    e.amount != null ? `${e.direction === 'in' ? '收入' : '支出'}${e.amount}${currencyById(e.currency).name}(${catById(e.category).name})${e.reimbursable ? (e.reimbursed ? '[已报销]' : '[待报销]') : ''}` : '',
+    e.amount != null ? (e.direction === 'transfer' ? `转账${e.amount}${currencyById(e.currency).name}` : `${e.direction === 'in' ? '收入' : '支出'}${e.amount}${currencyById(e.currency).name}(${catById(e.category).name})${e.reimbursable ? (e.reimbursed ? '[已报销]' : '[待报销]') : ''}${e.company ? '[公司账户]' : ''}`) : '',
+    e.accountName ? `账户:${e.accountName}` : '',
   ].filter(Boolean).join(' | '));
   return {
     范围: range.label,

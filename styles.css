@@ -480,3 +480,18 @@ details summary { cursor: pointer; padding: 6px 0; }
 @media (max-width: 400px) {
   .quick-row .btn { font-size: 13px; padding: 10px 4px; }
 }
+
+/* ---------- 账户 ---------- */
+.acct-pick { display: flex; align-items: center; gap: 8px; margin-top: 10px; flex-wrap: wrap; }
+.acct-pick .input { flex: 1; min-width: 0; width: auto; }
+.acct-pick > span { flex: none; width: 4.5em; }
+#f-to-amount { flex-basis: 100%; }
+.badge.company { background: #e3ecfb; color: #2f5fb3; }
+.acct-balance { display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 8px; }
+.acct-balance b { font-size: 24px; font-variant-numeric: tabular-nums; }
+.pos-text { color: var(--brand); }
+.rec-amount.muted { color: var(--muted); }
+@media (prefers-color-scheme: dark) { .badge.company { background: #1d2c47; color: #8db3f5; } }
+.money-row { flex-wrap: wrap; }
+#f-direction { flex-basis: 100%; display: flex; }
+#f-direction button { flex: 1; }

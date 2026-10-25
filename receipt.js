@@ -1,6 +1,7 @@
 // 凭证识别：从小票 / 付款截图里读出金额、币种、日期时间、商家、用途和类别。
 // 配置了 Claude 就用 AI 看图（准）；没有就在手机上做文字识别（OCR）再按规则解析（免费、离线可用但较粗）。
 import { CATEGORIES, guessCategory, getDefaultCurrency } from './parser.js';
+import { paymentHint } from './accounts.js';
 
 // ---------- 规则解析（纯函数，便于测试） ----------
 
@@ -157,6 +158,7 @@ export function parseReceiptText(text, now = Date.now()) {
     currency: amount != null ? guessReceiptCurrency(all) : null,
     time: at,
     category: guessReceiptCategory(`${merchant || ''}\n${all}`),
+    payment: paymentHint(all),   // 微信 / 支付宝 / 现金 / 泰铢卡 / 银行卡
     source: 'ocr',
   };
 }

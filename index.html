@@ -226,10 +226,19 @@
           <label>¥ 钱 <small id="amount-auto" class="tag" hidden>自动识别</small></label>
           <div class="money-row">
             <div class="seg" id="f-direction">
-              <button data-dir="out" class="active">支出</button><button data-dir="in">收入</button>
+              <button data-dir="out" class="active">支出</button><button data-dir="in">收入</button><button data-dir="transfer">转账</button>
             </div>
             <input id="f-amount" class="input amount" type="number" inputmode="decimal" step="0.01" min="0" placeholder="0">
             <select id="f-currency" class="input inline currency"></select>
+          </div>
+          <div class="acct-pick">
+            <span id="f-account-label" class="muted small">付款账户</span>
+            <select id="f-account" class="input"></select>
+          </div>
+          <div id="f-transfer" class="acct-pick" hidden>
+            <span class="muted small">转入账户</span>
+            <select id="f-to-account" class="input"></select>
+            <input id="f-to-amount" class="input" type="number" inputmode="decimal" step="0.01" min="0" placeholder="到账金额（换汇时填）">
           </div>
           <div id="f-reimb" class="seg reimb">
             <button data-reimb="no" class="active">不报销</button><button data-reimb="pending">要报销</button><button data-reimb="done">已报销</button>

@@ -1,8 +1,9 @@
 // 记录编辑弹层 + 通用弹层 + 记录列表项
 import * as db from './db.js';
-import { CATEGORIES, INCOME_CATEGORIES, TIME_CATS, CURRENCIES, catById, timeCatById, parseEntry, getDefaultCurrency } from './parser.js';
+import { CATEGORIES, INCOME_CATEGORIES, TIME_CATS, CURRENCIES, catById, timeCatById, currencyById, parseEntry, getDefaultCurrency } from './parser.js';
 import { VoiceCapture, speechSupported } from './voice.js';
-import { fmtMin, fmtRecMoney } from './analytics.js';
+import { fmtMin, fmtRecMoney, accountType } from './analytics.js';
+import { matchAccount, paymentHint } from './accounts.js';
 import { $, $$, esc, uid, store, settings, aiConfig, toast, blobUrl, resetPool, toLocalInput, fmtTime } from './ui.js';
 import { recognizeReceipt } from './receipt.js';
 import { aiReceipt } from './ai.js';
@@ -12,12 +13,15 @@ export const dataChanged = () => document.dispatchEvent(new Event('data-changed'
 // ---------- 列表项 ----------
 export function recItem(r, pool) {
   const isIn = r.direction === 'in';
-  const c = r.amount != null ? catById(r.category) : timeCatById(r.timeCat);
+  const isTransfer = r.direction === 'transfer';
+  const c = isTransfer ? { icon: '🔁', name: '转账' } : r.amount != null ? catById(r.category) : timeCatById(r.timeCat);
   const icon = r.photos?.length ? `<img src="${blobUrl(pool, r.photos[0])}" alt="">` : `<span>${c.icon}</span>`;
   const meta = [fmtTime(r.time)];
   if (r.durationMin) meta.push('⏱ ' + fmtMin(r.durationMin));
   if (r.timeCat) meta.push(timeCatById(r.timeCat).short);
-  if (r.amount != null) meta.push(c.name);
+  if (r.amount != null && !isTransfer) meta.push(c.name);
+  if (r.accountName && !isTransfer) meta.push(esc(r.accountName));
+  if (r.company) meta.push('<span class="badge company">公司</span>');
   if (r.reimbursable) meta.push(r.reimbursed ? '<span class="badge done">已报销</span>' : '<span class="badge">待报销</span>');
   if (r.audio) meta.push('🔊');
   if (r.photos?.length > 1) meta.push(`📎${r.photos.length}`);
@@ -26,7 +30,7 @@ export function recItem(r, pool) {
   return `<li class="rec" data-id="${r.id}">
     <div class="rec-icon">${icon}</div>
     <div class="rec-main"><div class="rec-title">${esc(title)}</div>${sub}<div class="rec-meta">${meta.join(' · ')}</div></div>
-    <div class="rec-amount${isIn ? ' income' : ''}${r.reimbursable ? ' reimb' : ''}">${r.amount != null ? (isIn ? '+' : '-') + fmtRecMoney(r) : ''}</div>
+    <div class="rec-amount${isIn ? ' income' : ''}${r.reimbursable ? ' reimb' : ''}${isTransfer || r.company ? ' muted' : ''}">${r.amount != null ? (isTransfer ? '' : isIn ? '+' : '-') + fmtRecMoney(r) : ''}</div>
   </li>`;
 }
 
@@ -47,9 +51,41 @@ export const sheetOpen = () => !sheet.hidden;
 
 function renderCatChips() {
   const list = draft.direction === 'in' ? INCOME_CATEGORIES : CATEGORIES;
+  const transfer = draft.direction === 'transfer';
+  $('#f-cats').hidden = transfer;
   $('#f-cats').innerHTML = list.map(c => `<button class="chip${c.id === draft.category ? ' active' : ''}" data-cat="${c.id}">${c.icon} ${c.name}</button>`).join('');
   $$('#f-direction button').forEach(b => b.classList.toggle('active', b.dataset.dir === draft.direction));
+  $('#f-transfer').hidden = !transfer;
+  $('#f-account-label').textContent = { in: '收款账户', transfer: '转出账户' }[draft.direction] || '付款账户';
 }
+
+// ---------- 账户选择 ----------
+let sheetAccounts = [];
+const accountOptions = (selected, blank) => `<option value="">${blank}</option>` +
+  sheetAccounts.map(a => `<option value="${a.id}"${a.id === selected ? ' selected' : ''}>${esc(a.name)}（${currencyById(a.currency).symbol}${a.owner === 'company' ? ' · 公司' : ''}）</option>`).join('');
+
+async function loadAccounts() {
+  // 房贷这类负债不会用来付款，信用卡可以
+  sheetAccounts = (await db.all('accounts')).filter(a => !a.archived && (!accountType(a.type).liability || a.type === 'credit'));
+  renderAccounts();
+}
+function renderAccounts() {
+  if (!draft) return;
+  $('#f-account').innerHTML = accountOptions(draft.accountId, sheetAccounts.length ? '不指定' : '还没有账户（财富页添加）');
+  $('#f-to-account').innerHTML = accountOptions(draft.toAccountId, '选择转入账户');
+}
+const accById = id => sheetAccounts.find(a => a.id === id) || null;
+
+function setAccount(acc, { touched = false } = {}) {
+  draft.accountId = acc?.id ?? null;
+  if (touched) draft.accTouched = true;
+  // 账户的币种和金额币种不一样时，没手动选过币种就跟着账户走
+  if (acc && !draft.curTouched) $('#f-currency').value = acc.currency || 'CNY';
+  if (acc?.owner === 'company' && draft.reimbursable) { draft.reimbursable = false; renderReimb(); }
+  renderAccounts();
+}
+$('#f-account').addEventListener('change', e => setAccount(accById(e.target.value), { touched: true }));
+$('#f-to-account').addEventListener('change', e => { draft.toAccountId = e.target.value || null; });
 $('#f-currency').innerHTML = CURRENCIES.map(c => `<option value="${c.id}">${c.symbol} ${c.name}</option>`).join('');
 function renderReimb() {
   const state = !draft.reimbursable ? 'no' : draft.reimbursed ? 'done' : 'pending';
@@ -92,7 +128,16 @@ export function openSheet(rec = null, preset = {}) {
     tcatTouched: !!rec,
     durTouched: !!rec,
     timeTouched: !!rec || preset.time != null || preset.start != null,
+    accountId: src.accountId ?? null,
+    toAccountId: src.toAccountId ?? null,
+    accTouched: !!src.accountId,
+    // 时间输入框只到分钟；没改过时间就用精确时间，免得和同一分钟里核对的余额前后颠倒
+    baseTime: src.time ?? src.start ?? null,
+    openedAt: Date.now(),
   };
+  $('#f-to-amount').value = src.toAmount ?? '';
+  renderAccounts();
+  loadAccounts();
   $('#sheet-title').textContent = rec ? '修改记录' : preset.heading || '记一笔';
   actEl.value = (rec ? rec.activity : preset.activity ?? preset.title) || '';
   noteEl.value = src.note || '';
@@ -183,6 +228,15 @@ function applyReceipt(r) {
   if (r.category && !draft.catTouched) {
     draft.category = r.category;
     filled.push(catById(r.category).name);
+  }
+  // 付款方式（微信 / 支付宝 / 现金 / 银行卡）→ 账户
+  const hint = r.payment || paymentHint(r.text || '');
+  const acc = !draft.accTouched && hint ? matchAccount(hint, sheetAccounts) : null;
+  if (acc) {
+    const cur = $('#f-currency').value;
+    setAccount(acc);
+    $('#f-currency').value = cur;   // 凭证上的币种优先
+    filled.push(acc.name);
   }
   renderCatChips();
   renderReimb();
@@ -300,6 +354,11 @@ function autoParse() {
   if (!draft.catTouched && p.category) draft.category = p.category;
   if (!draft.tcatTouched && p.timeCat) draft.timeCat = p.timeCat;
   if (!draft.durTouched && p.durationMin) durEl.value = p.durationMin;
+  const acc = !draft.accTouched && matchAccount(`${actEl.value} ${noteEl.value}`, sheetAccounts);
+  if (acc) {
+    setAccount(acc);
+    if (p.currencyExplicit && !draft.curTouched) $('#f-currency').value = p.currency;
+  }
   renderCatChips();
   renderReimb();
   renderTimeCats();
@@ -316,6 +375,7 @@ $('#f-direction').addEventListener('click', e => {
   draft.direction = b.dataset.dir;
   draft.category = null;
   draft.catTouched = true;
+  if (draft.direction !== 'out') draft.reimbursable = false;
   renderCatChips();
   renderReimb();
 });
@@ -348,6 +408,9 @@ $('#btn-delete').addEventListener('click', async () => {
 
 // 记录的统一保存入口（语音自动保存也走这里）
 export async function saveRecord(fields) {
+  const money = fields.amount != null;
+  const dir = money ? fields.direction || 'out' : 'out';
+  const transfer = dir === 'transfer';
   const rec = {
     id: fields.id || uid(),
     time: fields.time ?? Date.now(),
@@ -355,12 +418,21 @@ export async function saveRecord(fields) {
     activity: fields.activity || '',
     note: fields.note || '',
     amount: fields.amount ?? null,
-    currency: fields.amount != null ? fields.currency || getDefaultCurrency() : null,
+    currency: money ? fields.currency || getDefaultCurrency() : null,
+    // 付款 / 收款账户；公司账户的收支不算个人的
+    accountId: money ? fields.accountId || null : null,
+    accountName: money ? fields.accountName || '' : '',
+    company: money && !!fields.company,
+    // 转账：从 accountId 转到 toAccountId；换汇时 toAmount 是到账金额（toCurrency）
+    toAccountId: transfer ? fields.toAccountId || null : null,
+    toAccountName: transfer ? fields.toAccountName || '' : '',
+    toAmount: transfer ? fields.toAmount ?? null : null,
+    toCurrency: transfer ? fields.toCurrency || null : null,
     // 要报销的支出：reimbursed 表示公司已经把钱报给你了
-    reimbursable: fields.amount != null && fields.direction !== 'in' && !!fields.reimbursable,
-    reimbursed: fields.amount != null && fields.direction !== 'in' && !!fields.reimbursable && !!fields.reimbursed,
-    direction: fields.amount != null ? fields.direction || 'out' : 'out',
-    category: fields.amount != null ? fields.category || (fields.direction === 'in' ? 'other_income' : 'other') : null,
+    reimbursable: money && dir === 'out' && !fields.company && !!fields.reimbursable,
+    reimbursed: money && dir === 'out' && !fields.company && !!fields.reimbursable && !!fields.reimbursed,
+    direction: dir,
+    category: money && !transfer ? fields.category || (dir === 'in' ? 'other_income' : 'other') : null,
     timeCat: fields.timeCat || null,
     photos: fields.photos || [],
     audio: fields.audio || null,
@@ -374,6 +446,12 @@ export async function saveRecord(fields) {
   return rec;
 }
 
+function preciseTime() {
+  const base = draft.baseTime ?? draft.openedAt;
+  if (timeEl.value === toLocalInput(base)) return draft.baseTime ?? Date.now();
+  return new Date(timeEl.value).getTime() || Date.now();
+}
+
 $('#sheet-save').addEventListener('click', async () => {
   if (voice) await stopVoice();
   if (!draft) return;
@@ -382,10 +460,22 @@ $('#sheet-save').addEventListener('click', async () => {
   if (amount != null && (!Number.isFinite(amount) || amount < 0)) { toast('金额填得不对'); return; }
   const dur = durEl.value.trim() === '' ? null : Math.round(Number(durEl.value));
   if (dur != null && (!Number.isFinite(dur) || dur < 0)) { toast('时长填得不对'); return; }
-  const fields = { ...draft, activity: actEl.value.trim(), note: noteEl.value.trim(), amount, currency: $('#f-currency').value, durationMin: dur, time: new Date(timeEl.value).getTime() || Date.now() };
+  const acc = accById(draft.accountId);
+  const fields = {
+    ...draft, activity: actEl.value.trim(), note: noteEl.value.trim(), amount, currency: $('#f-currency').value, durationMin: dur,
+    time: preciseTime(),
+    accountName: acc?.name || '', company: acc?.owner === 'company',
+  };
   if (amount == null && !fields.note && !fields.activity && !draft.photos.length && !draft.audio && !dur) {
     toast('至少写点内容：做了什么、用时、金额或凭证');
     return;
+  }
+  if (draft.direction === 'transfer') {
+    const to = accById(draft.toAccountId);
+    if (amount == null || !acc || !to || acc === to) { toast('转账要填金额，并选好不同的转出、转入账户'); return; }
+    const toRaw = $('#f-to-amount').value.trim();
+    Object.assign(fields, { toAccountName: to.name, toCurrency: to.currency || 'CNY', toAmount: toRaw === '' ? null : Number(toRaw), company: false });
+    if (!fields.activity) fields.activity = `${acc.name} → ${to.name}`;
   }
   const rec = await saveRecord(fields);
   toast(rec.amount != null ? `已记 ${rec.direction === 'in' ? '+' : ''}${fmtRecMoney(rec)}${rec.reimbursable && !rec.reimbursed ? '（待报销）' : ''}` : '已记录');

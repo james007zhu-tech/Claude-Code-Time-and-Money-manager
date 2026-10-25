@@ -2,7 +2,8 @@ import * as db from './db.js';
 import { parseUtterance, parseDuration, timeCatById, guessTimeCat, getDefaultCurrency, CURRENCIES, currencyById } from './parser.js';
 import { VoiceCapture, speechSupported } from './voice.js';
 import { aiParse } from './ai.js';
-import { fmtMin, fmtMoney, fmtRecMoney, toBase, guessAccountType, summarizeTime, summarizeMoney, compileRules } from './analytics.js';
+import { fmtMin, fmtMoney, fmtRecMoney, toBase, convert, guessAccountType, summarizeTime, summarizeMoney, compileRules } from './analytics.js';
+import { matchAccount, defaultAccountFor, isCompany } from './accounts.js';
 import { $, $$, esc, uid, store, settings, saveSettings, aiConfig, toast, fmtClock, resetPool } from './ui.js';
 import { openSheet, saveRecord, recItem, sheetOpen, dataChanged } from './sheet.js';
 import { renderReview, renderTime, renderWealth, answerQuestion } from './views.js';
@@ -98,7 +99,7 @@ export async function understand(text) {
   const cfg = aiConfig();
   if (cfg) {
     try {
-      return await aiParse(cfg, text, { activity: getActivity()?.name });
+      return await aiParse(cfg, text, { activity: getActivity()?.name, accounts: (await activeAccounts()).map(a => a.name) });
     } catch (e) {
       toast('AI 暂时不可用，用本地理解：' + e.message);
     }
@@ -126,6 +127,7 @@ async function handleCommand(text, { audio = null } = {}) {
     return;
   }
   if (intent.type === 'finish') {
+    if (intent.entry?.amount != null) Object.assign(intent.entry, await accountFieldsFor(text, intent.entry));
     await finishActivity(intent.entry, extras);
     return;
   }
@@ -133,6 +135,12 @@ async function handleCommand(text, { audio = null } = {}) {
     await saveBalance(intent);
     return;
   }
+  if (intent.type === 'transfer') {
+    await saveTransfer(intent);
+    return;
+  }
+  // 付款 / 收款账户：话里提到的优先，否则用同币种最近用过的
+  if (intent.amount != null) Object.assign(intent, await accountFieldsFor(text, intent));
   // 记一笔：刚做完的事在等补充花费时，合并进去
   const followId = followUp?.id;
   if (followId && intent.amount != null && !intent.durationMin) {
@@ -155,6 +163,7 @@ async function handleCommand(text, { audio = null } = {}) {
     rec.durationMin ? fmtMin(rec.durationMin) : '',
     rec.amount != null ? (rec.direction === 'in' ? '+' : '') + fmtRecMoney(rec) : '',
     rec.reimbursable ? '待报销' : '',
+    rec.accountName || '',
   ].filter(Boolean).join(' · ');
   // 报销款到账：顺手把待报销的记录标成已报销
   if (rec.direction === 'in' && rec.category === 'refund') {
@@ -166,7 +175,44 @@ async function handleCommand(text, { audio = null } = {}) {
 
 const moneyFields = i => ({
   amount: i.amount ?? null, currency: i.currency, direction: i.direction, category: i.category, reimbursable: !!i.reimbursable,
+  accountId: i.accountId ?? null, accountName: i.accountName ?? '', company: !!i.company,
 });
+
+const activeAccounts = async () => (await db.all('accounts')).filter(a => !a.archived);
+
+// 找出这笔钱走的是哪个账户；没明说币种时改用账户的币种；公司账户付的不用再报销
+async function accountFieldsFor(text, intent) {
+  const accounts = await activeAccounts();
+  if (!accounts.length) return {};
+  let acc = (intent.accountHint && matchAccount(intent.accountHint, accounts)) || matchAccount(text, accounts);
+  if (!acc) {
+    const recent = await db.recordsBetween(Date.now() - 90 * 86400000, Date.now() + 86400000);
+    acc = defaultAccountFor(intent.currency || getDefaultCurrency(), accounts, recent);
+  }
+  if (!acc) return {};
+  const out = { accountId: acc.id, accountName: acc.name, company: isCompany(acc) };
+  if (!intent.currencyExplicit && acc.currency) out.currency = acc.currency;
+  if (out.company) out.reimbursable = false;
+  return out;
+}
+
+async function saveTransfer(t) {
+  const accounts = await activeAccounts();
+  const from = matchAccount(t.from, accounts), to = matchAccount(t.to, accounts);
+  if (!from || !to) {
+    toast(`没找到账户「${!from ? t.from : t.to}」，先在「财富 → 账户」里添加`);
+    return;
+  }
+  const currency = t.currency || from.currency || getDefaultCurrency();
+  const toCurrency = t.toCurrency || to.currency || currency;
+  const toAmount = t.toAmount ?? (toCurrency !== currency ? Math.round(convert(t.amount, currency, toCurrency) * 100) / 100 : null);
+  const rec = await saveRecord({
+    direction: 'transfer', amount: t.amount, currency, accountId: from.id, accountName: from.name,
+    toAccountId: to.id, toAccountName: to.name, toAmount, toCurrency,
+    activity: `${from.name} → ${to.name}`, note: t.text || '', source: 'voice',
+  });
+  toast(`已转账：${from.name} → ${to.name} ${fmtRecMoney(rec)}${toAmount != null ? ` → ${fmtMoney(toAmount, toCurrency)}` : ''}`, { label: '修改', run: () => openSheet(rec) });
+}
 
 // 按时间从早到晚，把金额加起来不超过这笔报销款的待报销记录标成已报销
 async function settleReimbursements(refund) {
@@ -184,11 +230,12 @@ async function settleReimbursements(refund) {
   toast(n ? `已把 ${n} 笔标成已报销（${fmtMoney(used)}）` : '没有能对上的待报销记录，可以在记录里手动改');
 }
 
-async function saveBalance({ account, value, currency, liability }) {
-  const accounts = await db.all('accounts');
-  let acc = accounts.find(a => a.name === account) || accounts.find(a => !a.archived && (a.name.includes(account) || account.includes(a.name)));
+async function saveBalance({ account, value, currency, currencyExplicit, liability, text }) {
+  const accounts = await activeAccounts();
+  let acc = accounts.find(a => a.name === account) || matchAccount(account, accounts) || matchAccount(text || '', accounts)
+    || accounts.find(a => a.name.includes(account) || account.includes(a.name));
   if (!acc) {
-    acc = { id: uid(), name: account, type: guessAccountType(account, liability), currency: currency || getDefaultCurrency(), createdAt: Date.now() };
+    acc = { id: uid(), name: account, type: guessAccountType(account, liability), currency: currency || getDefaultCurrency(), owner: /公司|公户/.test(account) ? 'company' : 'personal', aliases: [], createdAt: Date.now() };
     await db.put('accounts', acc);
   }
   const b = { id: uid(), accountId: acc.id, value, time: Date.now() };

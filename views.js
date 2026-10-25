@@ -5,10 +5,11 @@ import { VoiceCapture, speak, stopSpeaking } from './voice.js';
 import { aiParse, aiAnswer } from './ai.js';
 import {
   fmtMin, fmtHours, fmtMoney, fmtRecMoney, toBase, baseCurrency, summarizeTime, summarizeMoney, compileRules, diagnosis, localAnswer, dataDigest,
-  ACCOUNT_TYPES, accountType, balanceSheet, netWorthSeries, healthCheck, futureValue, avgMonthlyOut,
+  ACCOUNT_TYPES, accountType, balanceSheet, netWorthSeries, flowFor, healthCheck, futureValue, avgMonthlyOut,
 } from './analytics.js';
 import { $, esc, uid, store, settings, saveSettings, aiConfig, toast, resetPool, dayKey, dayLabel, barRow, chips } from './ui.js';
 import { recItem, openDialog, dataChanged } from './sheet.js';
+import { ACCOUNT_TEMPLATES } from './accounts.js';
 
 const DAY = 86400000;
 const rules = () => compileRules(settings.appRules);
@@ -142,7 +143,7 @@ export async function answerQuestion(q) {
   box.innerHTML = `<div class="q">问：${esc(q.text)}</div><div class="a">整理中…</div>`;
   await renderReview();
   const [records, usage, accounts, balances] = await Promise.all([db.allRecords(), db.usageBetween(q.range.start, q.range.end), db.all('accounts'), db.all('balances')]);
-  const data = { events: records, usage, rules: rules(), sheet: balanceSheet(accounts, balances) };
+  const data = { events: records, usage, rules: rules(), sheet: balanceSheet(accounts, balances, Date.now(), records) };
   let answer = localAnswer(q, data);
   let by = '';
   const cfg = aiConfig();
@@ -287,8 +288,8 @@ $('#time-body').addEventListener('click', e => {
 // ================= 财富管理（巴菲特） =================
 export async function renderWealth() {
   const [accounts, balances, records, decisions] = await Promise.all([db.all('accounts'), db.all('balances'), db.allRecords(), db.all('decisions')]);
-  const sheet = balanceSheet(accounts, balances);
-  const series = netWorthSeries(accounts, balances, 12);
+  const sheet = balanceSheet(accounts, balances, Date.now(), records);
+  const series = netWorthSeries(accounts, balances, 12, Date.now(), records);
   const month = summarizeMoney(records, rangeOf('month'));
   const avgOut = avgMonthlyOut(records, 3) || month.out;
   const h = healthCheck({ monthIn: month.in, monthOut: month.out, avgOut, sheet });
@@ -305,8 +306,10 @@ export async function renderWealth() {
     <div class="big-number">${fmtMoney(sheet.net)}</div>
     <div class="muted small">资产 ${fmtMoney(sheet.assets)} · 负债 ${fmtMoney(sheet.liabilities)}</div>
     ${series.length > 1 ? `<div class="nw-bars">${series.map(s => `<div class="nw-bar" title="${s.label} ${fmtMoney(s.value)}"><i class="${s.value < 0 ? 'neg' : ''}" style="height:${Math.max(3, Math.abs(s.value) / sMax * 100)}%"></i><span>${s.label}</span></div>`).join('')}</div>` : ''}
-    <p class="hint">说一句「招行卡余额5万3」「房贷还欠80万」「基金市值12万」就能更新。</p>
+    <p class="hint">个人账户合计，不含公司账户。说一句「微信余额3000」「房贷还欠80万」就能核对余额。</p>
   </div>
+
+  ${accountsCard(sheet, accounts, month)}
 
   <div class="card">
     <h3>本月收支</h3>
@@ -328,15 +331,6 @@ export async function renderWealth() {
     ${check(h.emergencyMonths == null ? null : h.emergencyMonths >= 6, `应急资金够 ${h.emergencyMonths == null ? '—' : h.emergencyMonths.toFixed(1)} 个月`, '现金和存款能覆盖 6 个月以上支出，才不会在坏时机被迫卖出资产。')}
     ${check(sheet.rows.length ? h.consumerDebt === 0 : null, `消费负债 ${fmtMoney(h.consumerDebt)}`, '信用卡、花呗等高息负债优先还清——巴菲特说过，用 18% 的利率借钱，谁也富不起来。')}
     ${check(h.debtRatio == null ? null : h.debtRatio < 0.5, `负债率 ${pct(h.debtRatio)}`, '远离过度杠杆：“只有退潮时，才知道谁在裸泳。”')}
-  </div>
-
-  <div class="card">
-    <div class="card-head"><h3>账户</h3><button class="btn small" data-w="add-account">＋ 添加</button></div>
-    ${sheet.rows.length ? sheet.rows.sort((a, b) => (!!a.type.liability - !!b.type.liability) || b.value - a.value).map(r => `<div class="acct-row" data-account="${r.account.id}">
-      <span class="acct-icon">${r.type.icon}</span>
-      <div class="grow"><div>${esc(r.account.name)}</div><div class="muted small">${r.type.name}${r.updated ? ' · ' + dayLabel(r.updated).split(' ')[0] + '更新' : ''}${r.currency !== baseCurrency() ? ` · ≈${fmtMoney(r.value)}` : ''}</div></div>
-      <b class="${r.type.liability ? 'neg-text' : ''}">${r.type.liability ? '-' : ''}${fmtMoney(r.raw, r.currency)}</b>
-    </div>`).join('') : '<p class="muted">还没有账户。说「支付宝余额2万」就会自动建一个。</p>'}
   </div>
 
   <div class="card">
@@ -380,6 +374,36 @@ export async function renderWealth() {
     <p class="hint">以上是公开的投资常识摘录，不构成任何投资建议。</p>
   </details>`;
   updateFV();
+}
+
+// 账户列表：个人 / 公司分开；余额 = 最近核对的余额 + 之后的流水
+function accountsCard(sheet, accounts, month) {
+  const row = r => `<div class="acct-row" data-account="${r.account.id}">
+    <span class="acct-icon">${r.type.icon}</span>
+    <div class="grow"><div>${esc(r.account.name)}</div><div class="muted small">${[
+      r.type.name,
+      r.updated ? `${dayLabel(r.updated).split(' ')[0]}核对` : '未核对',
+      r.flows ? `之后 ${r.flows} 笔流水` : '',
+      r.currency !== baseCurrency() ? `≈${fmtMoney(r.value)}` : '',
+    ].filter(Boolean).join(' · ')}</div></div>
+    <b class="${r.type.liability || r.raw < 0 ? 'neg-text' : ''}">${r.type.liability ? '-' : ''}${fmtMoney(r.raw, r.currency)}</b>
+  </div>`;
+  const sort = (a, b) => (!!a.type.liability - !!b.type.liability) || b.value - a.value;
+  const personal = sheet.rows.filter(r => !r.company).sort(sort);
+  const company = sheet.rows.filter(r => r.company).sort(sort);
+  const names = new Set(accounts.filter(a => !a.archived).map(a => a.name));
+  const missing = ACCOUNT_TEMPLATES.filter(t => !names.has(t.name));
+  return `<div class="card">
+    <div class="card-head"><h3>个人账户</h3><button class="btn small" data-w="add-account">＋ 添加</button></div>
+    ${personal.length ? personal.map(row).join('') : '<p class="muted">还没有账户。</p>'}
+    ${missing.length ? `<button class="btn small full" data-w="add-templates">＋ 添加常用账户：${missing.map(t => esc(t.name)).join('、')}</button>` : ''}
+    <p class="hint">记账时说「微信付的」「用现金」「刷公司卡」就记到对应账户；没说就用同币种最近用过的账户。点账户可以改名字、别名、币种，或核对余额。</p>
+  </div>
+  ${company.length ? `<div class="card">
+    <h3>公司账户</h3>
+    ${company.map(row).join('')}
+    <p class="muted small">本月公司账户支出 ${fmtMoney(month.companyOut)}${month.companyIn ? `，收入 ${fmtMoney(month.companyIn)}` : ''}。公司账户的钱不算个人净资产，它付的钱也不算个人支出、不用报销。</p>
+  </div>` : ''}`;
 }
 
 // 有多种币种时，说明是按汇率折算的，并列出原币金额
@@ -427,6 +451,17 @@ $('#wealth-body').addEventListener('input', e => {
 $('#wealth-body').addEventListener('click', async e => {
   const w = e.target.closest('[data-w]')?.dataset.w;
   if (w === 'add-account') return accountDialog(null);
+  if (w === 'add-templates') {
+    const names = new Set((await db.all('accounts')).filter(a => !a.archived).map(a => a.name));
+    const add = ACCOUNT_TEMPLATES.filter(t => !names.has(t.name));
+    for (const t of add) {
+      const { key, ...rest } = t;
+      await db.put('accounts', { ...rest, id: uid(), createdAt: Date.now() });
+    }
+    toast(`已添加 ${add.length} 个账户。点账户可以核对余额、改名字和别名`);
+    dataChanged();
+    return;
+  }
   if (w === 'add-decision') return decisionDialog(null);
   const acc = e.target.closest('[data-account]');
   if (acc) return accountDialog(await db.get('accounts', acc.dataset.account));
@@ -448,25 +483,58 @@ $('#wealth-body').addEventListener('click', async e => {
 });
 
 async function accountDialog(acc) {
-  const balances = acc ? (await db.all('balances')).filter(b => b.accountId === acc.id).sort((a, b) => b.time - a.time) : [];
+  const [balances, records, accounts] = await Promise.all([db.all('balances'), db.allRecords(), db.all('accounts')]);
+  const mine = acc ? balances.filter(b => b.accountId === acc.id).sort((a, b) => b.time - a.time) : [];
+  const row = acc ? balanceSheet([acc], balances, Date.now(), records).rows[0] : null;
+  const flows = acc ? records.filter(r => r.accountId === acc.id || r.toAccountId === acc.id).slice(0, 15) : [];
+  const cur = acc?.currency || getDefaultCurrency();
   const body = openDialog(acc ? acc.name : '添加账户', `
     <div class="field">
-      <label>名称</label><input class="input" name="name" value="${esc(acc?.name || '')}" placeholder="例如：招行卡、支付宝、沪深300基金、房贷">
-      <label>类型</label><select class="input" name="type">${ACCOUNT_TYPES.map(t => `<option value="${t.id}"${acc?.type === t.id ? ' selected' : ''}>${t.icon} ${t.name}</option>`).join('')}</select>
-      <label>币种</label><select class="input" name="currency">${CURRENCIES.map(c => `<option value="${c.id}"${(acc?.currency || getDefaultCurrency()) === c.id ? ' selected' : ''}>${c.symbol} ${c.name}</option>`).join('')}</select>
-      <label>当前${acc && accountType(acc.type).liability ? '欠款' : '余额/市值'}</label>
-      <input class="input" name="value" type="number" inputmode="decimal" placeholder="${balances[0] ? balances[0].value : '0'}">
-      <small class="muted">填了就新增一条今天的记录；空着不改。</small>
+      ${row ? `<div class="acct-balance"><span class="muted">现在余额</span><b>${fmtMoney(row.raw, cur)}</b></div>` : ''}
+      <label>名称</label><input class="input" name="name" value="${esc(acc?.name || '')}" placeholder="例如：微信、开泰银行卡、公司泰铢账户、房贷">
+      <label>别名（说话时可能怎么叫它，用逗号分开）</label>
+      <input class="input" name="aliases" value="${esc((acc?.aliases || []).join('，'))}" placeholder="例如：开泰，K PLUS，泰国卡">
+      <div class="grid2">
+        <label>类型<select class="input" name="type">${ACCOUNT_TYPES.map(t => `<option value="${t.id}"${(acc?.type || 'bank') === t.id ? ' selected' : ''}>${t.icon} ${t.name}</option>`).join('')}</select></label>
+        <label>币种<select class="input" name="currency">${CURRENCIES.map(c => `<option value="${c.id}"${cur === c.id ? ' selected' : ''}>${c.symbol} ${c.name}</option>`).join('')}</select></label>
+      </div>
+      <label>归属</label>
+      <select class="input" name="owner">
+        <option value="personal"${acc?.owner !== 'company' ? ' selected' : ''}>个人（算进我的净资产和支出）</option>
+        <option value="company"${acc?.owner === 'company' ? ' selected' : ''}>公司（单独统计，不算个人）</option>
+      </select>
+      <label>核对余额${acc && accountType(acc.type).liability ? '（欠款）' : ''}</label>
+      <input class="input" name="value" type="number" inputmode="decimal" placeholder="${row ? row.raw : '0'}">
+      <small class="muted">对照银行 App / 钱包里的实际余额填，之后的收支会在这个数上自动加减；空着不改。</small>
     </div>
-    ${balances.length ? `<div class="field"><label>历史</label>${balances.slice(0, 12).map(b => `<div class="act-row"><span class="grow">${dayLabel(b.time)}</span><b>${fmtMoney(b.value, acc.currency || 'CNY')}</b></div>`).join('')}</div>` : ''}
+    ${flows.length ? `<div class="field"><label>最近流水</label>${flows.map(r => {
+      const f = flowFor(r, acc);
+      return `<div class="act-row"><span class="grow">${esc(r.activity || r.note || catById(r.category).name)} <small class="muted">${dayLabel(r.time).split(' ')[0]}</small></span><b class="${f < 0 ? '' : 'pos-text'}">${f > 0 ? '+' : ''}${fmtMoney(f, cur)}</b></div>`;
+    }).join('')}</div>` : ''}
+    ${mine.length ? `<div class="field"><label>核对记录</label>${mine.slice(0, 8).map(b => `<div class="act-row"><span class="grow">${dayLabel(b.time)}</span><b>${fmtMoney(b.value, cur)}</b></div>`).join('')}</div>` : ''}
     ${acc ? '<button class="btn danger full" data-archive>不再统计这个账户</button>' : ''}
   `, async el => {
-    const name = el.querySelector('[name=name]').value.trim();
+    const val = n => el.querySelector(`[name=${n}]`).value.trim();
+    const name = val('name');
     if (!name) throw new Error('写个名称');
-    const a = { ...(acc || { id: uid(), createdAt: Date.now() }), name, type: el.querySelector('[name=type]').value, currency: el.querySelector('[name=currency]').value };
+    if (accounts.some(a => !a.archived && a.name === name && a.id !== acc?.id)) throw new Error('已经有同名账户了');
+    const a = {
+      ...(acc || { id: uid(), createdAt: Date.now() }), name, type: val('type'), currency: val('currency'), owner: val('owner'),
+      aliases: val('aliases').split(/[,，、\s]+/).map(s => s.trim()).filter(Boolean),
+    };
     await db.put('accounts', a);
-    const v = el.querySelector('[name=value]').value.trim();
-    if (v !== '') await db.put('balances', { id: uid(), accountId: a.id, value: Number(v), time: Date.now() });
+    // 改名或改归属后，同步更新这个账户上的记录
+    if (acc && (acc.name !== a.name || (acc.owner === 'company') !== (a.owner === 'company'))) {
+      for (const r of records) {
+        if (r.accountId !== a.id && r.toAccountId !== a.id) continue;
+        const next = { ...r };
+        if (r.accountId === a.id) { next.accountName = a.name; if (r.direction !== 'transfer') next.company = a.owner === 'company'; }
+        if (r.toAccountId === a.id) next.toAccountName = a.name;
+        if (next.company) next.reimbursable = next.reimbursed = false;
+        await db.putRecord(next);
+      }
+    }
+    if (val('value') !== '') await db.put('balances', { id: uid(), accountId: a.id, value: Number(val('value')), time: Date.now() });
   });
   body.querySelector('[data-archive]')?.addEventListener('click', async () => {
     if (!confirm('不再统计这个账户？（历史记录保留）')) return;

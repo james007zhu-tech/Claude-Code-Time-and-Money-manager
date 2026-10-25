@@ -112,7 +112,8 @@ test('整句意图', () => {
   assert.equal(r.amount, 35); assert.equal(r.durationMin, null); assert.equal(r.direction, 'out');
 });
 
-import { parseMoney, parseReimburse, setDefaultCurrency } from '../parser.js';
+import { parseMoney as parseMoneyFull, parseReimburse, setDefaultCurrency } from '../parser.js';
+const parseMoney = t => { const m = parseMoneyFull(t); return { amount: m.amount, currency: m.currency }; };
 
 test('多币种', () => {
   setDefaultCurrency('CNY');

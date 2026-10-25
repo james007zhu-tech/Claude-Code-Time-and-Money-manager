@@ -212,13 +212,13 @@ const dataURLToBlob = async u => (await fetch(u)).blob();
 bind('#s-csv', 'click', async () => {
   const recs = await db.allRecords();
   const cell = v => `"${String(v ?? '').replace(/"/g, '""')}"`;
-  const rows = [['开始时间', '做了什么', '说明', '用时(分钟)', '时间类别', '收支', '金额', '币种', '类别', '报销', '凭证张数', '有录音']];
+  const rows = [['开始时间', '做了什么', '说明', '用时(分钟)', '时间类别', '收支', '金额', '币种', '类别', '账户', '转入账户', '报销', '凭证张数', '有录音']];
   for (const r of recs) {
     const d = new Date(r.time);
     rows.push([
       `${dayKey(r.time)} ${pad(d.getHours())}:${pad(d.getMinutes())}`, r.activity, r.note, r.durationMin ?? '', r.timeCat ? timeCatById(r.timeCat).name : '',
-      r.amount != null ? (r.direction === 'in' ? '收入' : '支出') : '', r.amount ?? '', r.amount != null ? currencyById(r.currency).name : '',
-      r.amount != null ? catById(r.category).name : '', r.reimbursable ? (r.reimbursed ? '已报销' : '待报销') : '',
+      r.amount != null ? ({ in: '收入', transfer: '转账' }[r.direction] || '支出') : '', r.amount ?? '', r.amount != null ? currencyById(r.currency).name : '',
+      r.amount != null && r.direction !== 'transfer' ? catById(r.category).name : '', r.accountName || '', r.toAccountName || '', r.reimbursable ? (r.reimbursed ? '已报销' : '待报销') : '',
       r.photos?.length || 0, r.audio ? '是' : '',
     ]);
   }
