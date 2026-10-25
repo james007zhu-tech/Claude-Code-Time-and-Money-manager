@@ -114,6 +114,22 @@
       </div>
 
       <div class="card">
+        <h3>报销与 ERP 对接</h3>
+        <p class="hint">报销单可以导出成结构化数据（JSON / CSV）导入 ERP，或者直接推送到 ERP 的接口。格式说明见项目里的 docs/erp-export.md。</p>
+        <div class="grid2">
+          <label>员工编号<input id="s-emp" class="input" placeholder="例如 E001"></label>
+          <label>成本中心 / 部门代码<input id="s-cc" class="input" placeholder="例如 MKT"></label>
+        </div>
+        <label class="field-label">报销科目 → ERP 科目代码（每行「科目=代码」）</label>
+        <textarea id="s-codes" class="input mono" rows="6"></textarea>
+        <label class="field-label">推送地址（可空）</label>
+        <input id="s-erp-url" class="input" placeholder="https://erp.example.com/api/expense-claims">
+        <label class="field-label">请求头（每行一个，例如 Authorization: Bearer xxx）</label>
+        <textarea id="s-erp-headers" class="input mono" rows="2"></textarea>
+        <label class="switch-row"><span>推送 / 导出时带上凭证图片</span><input id="s-erp-receipts" type="checkbox"></label>
+      </div>
+
+      <div class="card">
         <h3>提醒</h3>
         <p class="hint">说「开始…」并设预计时长，到点会提醒；也可以打开定时提醒。</p>
         <label class="switch-row"><span>定时提醒我记录</span><input id="s-remind" type="checkbox"></label>
@@ -273,6 +289,8 @@
       <button class="btn primary small" data-report="print">🖨️ 打印 / 存 PDF</button>
       <button class="btn small" data-report="download">下载单据</button>
       <button class="btn small" data-report="csv">明细表（Excel）</button>
+      <button class="btn small" data-report="erp-json">导出给 ERP</button>
+      <button class="btn small" data-report="erp-push" id="report-push" hidden>推送到 ERP</button>
       <button class="btn small ghost" data-report="submitted">标记为已提交</button>
     </div>
     <iframe id="report-frame" title="报销单"></iframe>

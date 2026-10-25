@@ -9,6 +9,7 @@ import {
 } from './analytics.js';
 import { $, esc, uid, store, settings, saveSettings, aiConfig, toast, resetPool, dayKey, dayLabel, barRow, chips, download } from './ui.js';
 import { buildReimbursementHtml } from './report.js';
+import { buildErpPayload, erpCsv, pushToErp, parseCodes } from './erp.js';
 import { recItem, openDialog, dataChanged } from './sheet.js';
 import { ACCOUNT_TEMPLATES } from './accounts.js';
 
@@ -447,15 +448,20 @@ export async function openReportDialog() {
       <label>报销范围</label>
       <select class="input" name="range">${REPORT_RANGES.map(([k, l]) => `<option value="${k}">${l}</option>`).join('')}</select>
       <label class="switch-row"><span>包含已提交过的</span><input type="checkbox" name="submitted"></label>
+      <label>排版</label>
+      <select class="input" name="layout">
+        <option value="category"${settings.reportLayout !== 'single' ? ' selected' : ''}>按科目分页（汇总页 + 每个科目单独几页：明细后跟凭证）</option>
+        <option value="single"${settings.reportLayout === 'single' ? ' selected' : ''}>一页汇总（明细尽量一页，凭证另附）</option>
+      </select>
       <label>报销币种（外币按汇率折算）</label>
       <select class="input" name="currency">${CURRENCIES.map(c => `<option value="${c.id}"${c.id === guessCur ? ' selected' : ''}>${c.symbol} ${c.name}</option>`).join('')}</select>
       <label>报销人</label><input class="input" name="person" value="${esc(settings.reportPerson || '')}" placeholder="你的名字">
       <label>单位 / 部门</label><input class="input" name="org" value="${esc(settings.reportOrg || '')}" placeholder="例如：某某（泰国）有限公司 · 市场部">
     </div>
-    <p class="hint">一张 A4：抬头、分类汇总（交通费、住宿差旅费、餐饮费……各多少）、明细、大写金额、签字栏。凭证少时（4 张以内）放在同一页，多了另附凭证粘贴页，每页 6 张。</p>
+    <p class="hint">按科目分页：第 1 页是汇总（各科目金额、在第几页、大写金额、签字栏），之后交通费、餐饮费……各自单独成页，先明细后凭证，凭证多就续页。</p>
   `, async el => {
     const val = n => el.querySelector(`[name=${n}]`);
-    Object.assign(settings, { reportCurrency: val('currency').value, reportPerson: val('person').value.trim(), reportOrg: val('org').value.trim() });
+    Object.assign(settings, { reportCurrency: val('currency').value, reportPerson: val('person').value.trim(), reportOrg: val('org').value.trim(), reportLayout: val('layout').value });
     saveSettings();
     const key = val('range').value;
     const range = key === 'pending' ? null : rangeOf(key);
@@ -463,7 +469,7 @@ export async function openReportDialog() {
     if (!items.length) throw new Error('这个范围里没有待报销的支出');
     const period = range ? periodLabel(range) : periodLabel({ start: Math.min(...items.map(r => r.time)), end: Math.max(...items.map(r => r.time)) + 1 });
     toast('正在排版…');
-    await showReport(items, { currency: settings.reportCurrency, person: settings.reportPerson, org: settings.reportOrg, period });
+    await showReport(items, { currency: settings.reportCurrency, person: settings.reportPerson, org: settings.reportOrg, period, layout: settings.reportLayout, codes: parseCodes(settings.erpCodes) });
   }, { saveLabel: '生成' });
 }
 
@@ -495,6 +501,7 @@ async function showReport(items, opts) {
   const box = $('#report');
   $('#report-frame').srcdoc = built.html;
   $('#report-title').textContent = `报销单 · ${opts.period} · ${fmtMoney(built.total, opts.currency)} · ${built.pages} 页`;
+  $('#report-push').hidden = !settings.erpUrl;
   box.hidden = false;
   document.body.classList.add('no-scroll');
   history.pushState({ report: true }, '');
@@ -520,6 +527,24 @@ $('#report').addEventListener('click', async e => {
     const lines = [['序号', '日期', '科目', '事项/用途', '说明', '付款方式', '原币', '原币金额', '报销币种', '报销金额', '凭证张数']];
     for (const r of rows) lines.push([r.no, dayKey(r.time), r.item, r.activity, r.note, r.accountName, currencyById(r.currency).name, r.amount, currencyById(opts.currency).name, Math.round(r.converted * 100) / 100, r.photoUrls.length]);
     download(`${name}-明细.csv`, new Blob(['﻿' + lines.map(l => l.map(cell).join(',')).join('\r\n')], { type: 'text/csv' }));
+  }
+  if (act === 'erp-json' || act === 'erp-push') {
+    const payload = buildErpPayload(lastReport, { ...opts, employeeCode: settings.employeeCode, costCenter: settings.costCenter, includeReceipts: settings.erpIncludeReceipts });
+    if (act === 'erp-json') {
+      download(`${name}-ERP.json`, new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' }));
+      download(`${name}-ERP分录.csv`, new Blob([erpCsv(payload)], { type: 'text/csv' }));
+      return;
+    }
+    toast('正在推送到 ERP…');
+    try {
+      await pushToErp(settings.erpUrl, settings.erpHeaders, payload);
+      for (const r of items) await db.putRecord({ ...(await db.getRecord(r.id)), reimbSubmittedAt: Date.now(), erpClaimId: payload.claimId, updatedAt: Date.now() });
+      toast(`已推送到 ERP（单号 ${payload.claimId}），这些支出已标为「已提交」`);
+      dataChanged();
+    } catch (e) {
+      toast('推送失败：' + e.message);
+    }
+    return;
   }
   if (act === 'submitted') {
     for (const r of items) await db.putRecord({ ...(await db.getRecord(r.id)), reimbSubmittedAt: Date.now(), updatedAt: Date.now() });

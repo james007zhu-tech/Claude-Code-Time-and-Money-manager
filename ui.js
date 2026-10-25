@@ -1,6 +1,7 @@
 // 各页面共用的小工具和设置
 import { DEFAULT_APP_RULES, DEFAULT_RATES, setFx } from './analytics.js';
 import { setDefaultCurrency } from './parser.js';
+import { DEFAULT_CODES } from './erp.js';
 
 export const $ = (sel, el = document) => el.querySelector(sel);
 export const $$ = (sel, el = document) => [...el.querySelectorAll(sel)];
@@ -30,6 +31,9 @@ export const DEFAULT_SETTINGS = {
   defaultCurrency: 'CNY',   // 说「块」或不带单位时指哪种货币（人在哪就设哪种）
   rates: DEFAULT_RATES,     // 1 单位外币 = 多少人民币
   ratesUpdatedAt: 0,
+  reportLayout: 'category',  // 报销单排版：category 按科目分页 / single 一页汇总
+  employeeCode: '', costCenter: '',
+  erpCodes: DEFAULT_CODES, erpUrl: '', erpHeaders: '', erpIncludeReceipts: true,
 };
 export const settings = { ...DEFAULT_SETTINGS, ...store.get('settings', {}) };
 export function applyCurrencySettings() {

@@ -15,6 +15,12 @@ $('#s-default-cur').innerHTML = curOptions;
 $('#s-base-cur').innerHTML = curOptions;
 
 export function renderSettings() {
+  $('#s-emp').value = settings.employeeCode;
+  $('#s-cc').value = settings.costCenter;
+  $('#s-codes').value = settings.erpCodes;
+  $('#s-erp-url').value = settings.erpUrl;
+  $('#s-erp-headers').value = settings.erpHeaders;
+  $('#s-erp-receipts').checked = settings.erpIncludeReceipts;
   $('#s-default-cur').value = settings.defaultCurrency;
   $('#s-base-cur').value = settings.baseCurrency;
   $('#s-rate-THB').value = settings.rates.THB;
@@ -49,6 +55,10 @@ export function renderSettings() {
 }
 
 const bind = (id, ev, fn) => $(id).addEventListener(ev, fn);
+for (const [id, key] of [['#s-emp', 'employeeCode'], ['#s-cc', 'costCenter'], ['#s-codes', 'erpCodes'], ['#s-erp-url', 'erpUrl'], ['#s-erp-headers', 'erpHeaders']]) {
+  bind(id, 'change', e => { settings[key] = e.target.value.trim(); saveSettings(); });
+}
+bind('#s-erp-receipts', 'change', e => { settings.erpIncludeReceipts = e.target.checked; saveSettings(); });
 bind('#s-default-cur', 'change', e => { settings.defaultCurrency = e.target.value; saveSettings(); dataChanged(); });
 bind('#s-base-cur', 'change', e => { settings.baseCurrency = e.target.value; saveSettings(); dataChanged(); });
 for (const cur of ['THB', 'USD']) {
