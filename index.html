@@ -1,0 +1,180 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#12a37b">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-title" content="语音记账">
+  <meta name="description" content="做完一件事，拍下凭证、说一句话，就记好一笔账">
+  <link rel="manifest" href="manifest.webmanifest">
+  <link rel="icon" href="icons/icon.svg" type="image/svg+xml">
+  <link rel="apple-touch-icon" href="icons/icon-192.png">
+  <link rel="stylesheet" href="styles.css">
+  <title>语音记账</title>
+</head>
+<body>
+  <header class="topbar"><h1 id="view-title">语音记账</h1></header>
+
+  <div id="banner" class="banner" hidden>
+    <div class="banner-text"><b id="banner-title"></b><span id="banner-body"></span></div>
+    <div class="banner-actions">
+      <button id="banner-go" class="btn primary small">记一笔</button>
+      <button id="banner-close" class="btn ghost small">稍后</button>
+    </div>
+  </div>
+
+  <main>
+    <!-- 首页 -->
+    <section id="view-home" class="view active" data-title="语音记账">
+      <div id="activity-card" class="card"></div>
+
+      <button id="btn-new" class="btn primary huge">🎙️ 记一笔</button>
+      <p class="hint center">拍凭证 + 说一句「干了什么、花了多少」，自动识别金额</p>
+
+      <div class="card">
+        <div class="card-head">
+          <span>今天</span>
+          <span><b id="today-total">¥0</b> · <span id="today-count">0</span> 笔</span>
+        </div>
+        <ul id="today-list" class="rec-list"></ul>
+      </div>
+    </section>
+
+    <!-- 账单 -->
+    <section id="view-list" class="view" data-title="账单">
+      <div class="month-nav" data-month-nav></div>
+      <input id="search" class="input" type="search" placeholder="搜索说明、事项、类别">
+      <div id="list-summary" class="list-summary"></div>
+      <div id="list-days"></div>
+    </section>
+
+    <!-- 统计 -->
+    <section id="view-stats" class="view" data-title="统计">
+      <div class="month-nav" data-month-nav></div>
+      <div id="stats"></div>
+    </section>
+
+    <!-- 设置 -->
+    <section id="view-settings" class="view" data-title="设置">
+      <div class="card">
+        <h3>提醒</h3>
+        <p class="hint">在首页「开始」一件事并设定预计时长，到点会提醒你录入；也可以打开下面的定时提醒。</p>
+        <label class="switch-row"><span>定时提醒我记账</span><input id="s-remind" type="checkbox"></label>
+        <div class="setting-row">
+          <span>多久没记账就提醒</span>
+          <select id="s-every" class="input inline">
+            <option value="30">30 分钟</option>
+            <option value="60">1 小时</option>
+            <option value="90">1.5 小时</option>
+            <option value="120">2 小时</option>
+            <option value="180">3 小时</option>
+            <option value="240">4 小时</option>
+          </select>
+        </div>
+        <div class="setting-row">
+          <span>提醒时段</span>
+          <span><input id="s-start" type="time" class="input inline"> – <input id="s-end" type="time" class="input inline"></span>
+        </div>
+        <div class="setting-row">
+          <span>系统通知：<b id="s-notify-state">未开启</b></span>
+          <button id="s-notify" class="btn small">开启通知</button>
+        </div>
+        <button id="s-test" class="btn small ghost">发一条测试提醒</button>
+        <p class="hint">手机上请先「添加到主屏幕」再开启通知。网页版提醒需要应用在后台保持打开；关掉应用后系统可能不会再提醒。</p>
+      </div>
+
+      <div class="card">
+        <h3>语音</h3>
+        <label class="switch-row"><span>同时保存原始录音</span><input id="s-audio" type="checkbox"></label>
+        <p class="hint" id="s-voice-state"></p>
+      </div>
+
+      <div class="card">
+        <h3>数据</h3>
+        <p class="hint">数据只保存在这台设备的浏览器里。换手机或清理浏览器前，记得导出备份。</p>
+        <div class="btn-row">
+          <button id="s-csv" class="btn small">导出表格 (CSV)</button>
+          <button id="s-backup" class="btn small">导出完整备份</button>
+          <button id="s-restore" class="btn small">导入备份</button>
+          <input id="s-restore-file" type="file" accept="application/json,.json" hidden>
+        </div>
+        <button id="s-clear" class="btn small danger">清空全部数据</button>
+      </div>
+    </section>
+  </main>
+
+  <nav class="tabbar">
+    <button data-view="home" class="active"><span>🏠</span>首页</button>
+    <button data-view="list"><span>📒</span>账单</button>
+    <button data-view="stats"><span>📊</span>统计</button>
+    <button data-view="settings"><span>⚙️</span>设置</button>
+  </nav>
+
+  <!-- 记一笔 -->
+  <div id="sheet" class="sheet" hidden>
+    <div class="sheet-panel">
+      <div class="sheet-head">
+        <button id="sheet-cancel" class="link">取消</button>
+        <h2 id="sheet-title">记一笔</h2>
+        <button id="sheet-save" class="link strong">保存</button>
+      </div>
+      <div class="sheet-body">
+        <div class="field">
+          <label>① 消费凭证</label>
+          <div id="photo-list" class="photos"></div>
+          <div class="btn-row">
+            <button id="btn-camera" class="btn">📷 拍凭证</button>
+            <button id="btn-gallery" class="btn">🖼️ 从相册选</button>
+          </div>
+          <input id="in-camera" type="file" accept="image/*" capture="environment" hidden>
+          <input id="in-gallery" type="file" accept="image/*" multiple hidden>
+        </div>
+
+        <div class="field">
+          <label>② 说一句：干了什么、花了多少</label>
+          <div class="voice">
+            <button id="btn-mic" class="mic" aria-label="开始说话">🎙️</button>
+            <div id="mic-hint" class="hint">点一下开始说，说完再点一下</div>
+            <div id="live-text" class="live" hidden></div>
+            <div id="audio-box" class="audio-box" hidden>
+              <audio id="audio-preview" controls></audio>
+              <button id="btn-audio-del" class="link danger-text">删除录音</button>
+            </div>
+          </div>
+          <textarea id="f-note" class="input" rows="3" placeholder="例如：和客户吃午饭，花了一百二十八块"></textarea>
+        </div>
+
+        <div class="field two">
+          <div>
+            <label for="f-amount">金额 ¥ <small id="amount-auto" class="tag" hidden>自动</small></label>
+            <input id="f-amount" class="input amount" type="number" inputmode="decimal" step="0.01" min="0" placeholder="0">
+          </div>
+          <div>
+            <label for="f-time">时间</label>
+            <input id="f-time" class="input" type="datetime-local">
+          </div>
+        </div>
+
+        <div class="field">
+          <label>类别</label>
+          <div id="f-cats" class="chips"></div>
+        </div>
+
+        <div class="field">
+          <label for="f-activity">关联事项 <small id="f-duration" class="tag" hidden></small></label>
+          <input id="f-activity" class="input" placeholder="可选，例如：拜访客户">
+        </div>
+
+        <button id="btn-delete" class="btn danger full" hidden>删除这笔</button>
+      </div>
+    </div>
+  </div>
+
+  <div id="viewer" class="viewer" hidden><img alt="凭证"></div>
+  <div id="toast" class="toast" hidden></div>
+
+  <script type="module" src="app.js"></script>
+</body>
+</html>
