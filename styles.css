@@ -471,3 +471,12 @@ details summary { cursor: pointer; padding: 6px 0; }
   .mic.big { width: 88px; height: 88px; font-size: 38px; }
   .sheet-panel { height: 100%; max-height: 100%; border-radius: 0; }
 }
+
+/* ---------- 凭证识别 ---------- */
+.receipt-status { margin-top: 10px; background: var(--brand-soft); border-radius: 10px; padding: 8px 12px; font-size: 14px; line-height: 1.6; }
+.receipt-status.busy { background: var(--chip); color: var(--muted); }
+.receipt-field > label small { font-weight: 400; margin-left: 4px; }
+.quick-row .btn { white-space: nowrap; }
+@media (max-width: 400px) {
+  .quick-row .btn { font-size: 13px; padding: 10px 4px; }
+}

@@ -42,7 +42,8 @@
       <div id="activity-card" class="card" hidden></div>
 
       <div class="quick-row">
-        <button id="btn-photo" class="btn">📷 拍凭证记一笔</button>
+        <button id="btn-photo" class="btn">📷 拍凭证</button>
+        <button id="btn-album" class="btn">🖼️ 相册选凭证</button>
         <button id="btn-new" class="btn">✍️ 手动记</button>
       </div>
 
@@ -184,6 +185,19 @@
         <button id="sheet-save" class="link strong">保存</button>
       </div>
       <div class="sheet-body">
+        <div class="field receipt-field">
+          <label>凭证 <small class="muted">拍照或从相册选，自动识别金额、时间、用途</small></label>
+          <div id="photo-list" class="photos"></div>
+          <div class="btn-row">
+            <button id="btn-camera" class="btn">📷 拍照</button>
+            <button id="btn-gallery" class="btn">🖼️ 相册</button>
+            <button id="btn-recognize" class="btn ghost" hidden>🔍 重新识别</button>
+          </div>
+          <div id="receipt-status" class="receipt-status" hidden></div>
+          <input id="in-camera" type="file" accept="image/*" capture="environment" hidden>
+          <input id="in-gallery" type="file" accept="image/*" multiple hidden>
+        </div>
+
         <div class="field">
           <label for="f-activity">做了什么</label>
           <input id="f-activity" class="input" placeholder="例如：拜访客户、写方案">
@@ -221,17 +235,6 @@
             <button data-reimb="no" class="active">不报销</button><button data-reimb="pending">要报销</button><button data-reimb="done">已报销</button>
           </div>
           <div id="f-cats" class="chips"></div>
-        </div>
-
-        <div class="field">
-          <label>凭证</label>
-          <div id="photo-list" class="photos"></div>
-          <div class="btn-row">
-            <button id="btn-camera" class="btn">📷 拍凭证</button>
-            <button id="btn-gallery" class="btn">🖼️ 相册</button>
-          </div>
-          <input id="in-camera" type="file" accept="image/*" capture="environment" hidden>
-          <input id="in-gallery" type="file" accept="image/*" multiple hidden>
         </div>
 
         <button id="btn-delete" class="btn danger full" hidden>删除这条</button>

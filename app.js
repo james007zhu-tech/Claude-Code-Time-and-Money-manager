@@ -143,7 +143,7 @@ async function handleCommand(text, { audio = null } = {}) {
       if (audio) rec.audio = audio;
       await saveRecord(rec);
       followUp = null;
-      toast(`「${rec.activity}」花了 ${fmtRecMoney(rec)}${rec.reimbursable ? '（待报销）' : ''}`, { label: '加凭证', run: () => openSheet(rec, { pickPhoto: true }) });
+      toast(`「${rec.activity}」花了 ${fmtRecMoney(rec)}${rec.reimbursable ? '（待报销）' : ''}`, { label: '加凭证', run: () => openSheet(rec, { pickPhoto: 'gallery' }) });
       return;
     }
   }
@@ -234,7 +234,7 @@ async function finishActivity(entry, extras = {}, { silent = false } = {}) {
   });
   if (silent) return;
   if (rec.amount != null) {
-    toast(`「${act.name}」${fmtMin(durationMin)} · ${fmtRecMoney(rec)}${rec.reimbursable ? '（待报销）' : ''}`, { label: '加凭证', run: () => openSheet(rec, { pickPhoto: true }) });
+    toast(`「${act.name}」${fmtMin(durationMin)} · ${fmtRecMoney(rec)}${rec.reimbursable ? '（待报销）' : ''}`, { label: '加凭证', run: () => openSheet(rec, { pickPhoto: 'gallery' }) });
   } else {
     followUp = { id: rec.id, name: act.name, durationMin };
   }
@@ -263,6 +263,7 @@ function renderActivity() {
       <div class="muted">这件事花钱了吗？</div>
       <div class="btn-row">
         <button class="btn primary" data-act="photo">📷 拍凭证</button>
+        <button class="btn" data-act="album">🖼️ 相册</button>
         <button class="btn" data-act="say">🎙️ 说花了多少</button>
         <button class="btn ghost" data-act="nomoney">没花钱</button>
       </div>
@@ -275,13 +276,19 @@ $('#activity-card').addEventListener('click', async e => {
   const act = e.target.closest('[data-act]')?.dataset.act;
   if (act === 'finish') finishActivity(null);
   else if (act === 'cancel' && confirm('放弃这件事，不记录？')) { store.set('activity', null); renderHome(); }
-  else if (act === 'photo') { const rec = await db.getRecord(followUp.id); followUp = null; if (rec) openSheet(rec, { pickPhoto: true }); renderActivity(); }
+  else if (act === 'photo' || act === 'album') {
+    const rec = await db.getRecord(followUp.id);
+    followUp = null;
+    if (rec) openSheet(rec, { pickPhoto: act === 'album' ? 'gallery' : 'camera' });
+    renderActivity();
+  }
   else if (act === 'say') $('#hero-mic').click();
   else if (act === 'nomoney') { followUp = null; renderActivity(); }
 });
 
 $('#btn-new').addEventListener('click', () => openSheet());
-$('#btn-photo').addEventListener('click', () => openSheet(null, { pickPhoto: true }));
+$('#btn-photo').addEventListener('click', () => openSheet(null, { pickPhoto: 'camera', heading: '凭证记一笔' }));
+$('#btn-album').addEventListener('click', () => openSheet(null, { pickPhoto: 'gallery', heading: '凭证记一笔' }));
 
 // ---------- 首页：今天 ----------
 async function renderHome() {

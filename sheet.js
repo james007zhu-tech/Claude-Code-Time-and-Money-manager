@@ -3,7 +3,9 @@ import * as db from './db.js';
 import { CATEGORIES, INCOME_CATEGORIES, TIME_CATS, CURRENCIES, catById, timeCatById, parseEntry, getDefaultCurrency } from './parser.js';
 import { VoiceCapture, speechSupported } from './voice.js';
 import { fmtMin, fmtRecMoney } from './analytics.js';
-import { $, $$, esc, uid, store, settings, toast, blobUrl, resetPool, toLocalInput, fmtTime } from './ui.js';
+import { $, $$, esc, uid, store, settings, aiConfig, toast, blobUrl, resetPool, toLocalInput, fmtTime } from './ui.js';
+import { recognizeReceipt } from './receipt.js';
+import { aiReceipt } from './ai.js';
 
 export const dataChanged = () => document.dispatchEvent(new Event('data-changed'));
 
@@ -82,12 +84,14 @@ export function openSheet(rec = null, preset = {}) {
     source: rec?.source || preset.source || 'manual',
     reimbursable: !!src.reimbursable,
     reimbursed: !!src.reimbursed,
+    // 已有记录里填过的字段视为用户确认过，识别凭证时不覆盖；空着的仍然可以自动填
     reimbTouched: !!rec,
-    curTouched: !!rec,
-    amountTouched: !!rec,
-    catTouched: !!rec,
+    curTouched: rec?.amount != null,
+    amountTouched: rec?.amount != null,
+    catTouched: rec?.category != null,
     tcatTouched: !!rec,
     durTouched: !!rec,
+    timeTouched: !!rec || preset.time != null || preset.start != null,
   };
   $('#sheet-title').textContent = rec ? '修改记录' : preset.heading || '记一笔';
   actEl.value = (rec ? rec.activity : preset.activity ?? preset.title) || '';
@@ -104,12 +108,14 @@ export function openSheet(rec = null, preset = {}) {
   renderTimeCats();
   renderPhotos();
   renderAudio();
+  setReceiptStatus('');
   setMicState(false);
   sheet.hidden = false;
   document.body.classList.add('no-scroll');
   history.pushState({ sheet: true }, '');
   $('#banner').hidden = true;
-  if (preset.pickPhoto) $('#in-camera').click();
+  // pickPhoto：'camera' 拍照，'gallery' 从相册选（手机也会提供拍照选项）
+  if (preset.pickPhoto) $(preset.pickPhoto === 'gallery' ? '#in-gallery' : '#in-camera').click();
 }
 
 const isDirty = () => draft && !draft.id && (draft.photos.length || draft.audio || noteEl.value.trim() || amountEl.value || actEl.value.trim());
@@ -134,7 +140,64 @@ function renderPhotos() {
   resetPool('sheet');
   $('#photo-list').innerHTML = draft.photos.map((p, i) =>
     `<div class="photo"><img src="${blobUrl('sheet', p)}" data-view-photo="${i}" alt="凭证"><button data-del-photo="${i}" aria-label="删除">×</button></div>`).join('');
+  $('#btn-recognize').hidden = !draft.photos.length;
 }
+
+// ---------- 凭证识别 ----------
+function setReceiptStatus(html, busy = false) {
+  const el = $('#receipt-status');
+  el.hidden = !html;
+  el.innerHTML = html;
+  el.classList.toggle('busy', busy);
+}
+
+async function recognizePhoto(blob) {
+  const token = draft;
+  setReceiptStatus('🔍 正在识别凭证…', true);
+  try {
+    const r = await recognizeReceipt(blob, { ai: aiConfig(), aiReceipt, onProgress: msg => draft === token && setReceiptStatus(`🔍 ${esc(msg)}`, true) });
+    if (draft !== token) return;
+    applyReceipt(r);
+  } catch (e) {
+    if (draft === token) setReceiptStatus(`⚠️ ${esc(e.message)}`);
+  }
+}
+
+// 把识别结果填进还没手动改过的字段
+function applyReceipt(r) {
+  const filled = [];
+  if (r.amount != null && !draft.amountTouched) {
+    amountEl.value = r.amount;
+    draft.direction = 'out';
+    if (r.currency && !draft.curTouched) $('#f-currency').value = r.currency;
+    filled.push(fmtRecMoney({ amount: r.amount, currency: $('#f-currency').value }));
+  }
+  if (r.time && !draft.timeTouched) {
+    timeEl.value = toLocalInput(r.time);
+    const d = new Date(r.time);
+    filled.push(`${d.getMonth() + 1}月${d.getDate()}日 ${fmtTime(r.time)}`);
+  }
+  const purpose = r.purpose || r.merchant;
+  if (purpose && !actEl.value.trim()) actEl.value = r.purpose && r.merchant ? `${r.merchant} ${r.purpose}` : purpose;
+  if (r.merchant && !noteEl.value.trim()) noteEl.value = [r.merchant, r.purpose].filter(Boolean).join('：');
+  if (r.category && !draft.catTouched) {
+    draft.category = r.category;
+    filled.push(catById(r.category).name);
+  }
+  renderCatChips();
+  renderReimb();
+  const by = r.source === 'ai' ? 'AI' : '手机识别';
+  setReceiptStatus(r.amount == null && !r.merchant
+    ? '没认出内容，可以手动填写'
+    : `✅ 已识别（${by}）：${esc([purpose, ...filled].filter(Boolean).join(' · '))}<br><small class="muted">请核对一下，不对可以直接改</small>`);
+}
+
+$('#btn-recognize').addEventListener('click', () => {
+  if (!draft?.photos.length) return;
+  // 重新识别时覆盖之前自动填的值
+  Object.assign(draft, { amountTouched: false, catTouched: false, timeTouched: false, curTouched: false });
+  recognizePhoto(draft.photos[0]);
+});
 function renderAudio() {
   $('#audio-box').hidden = !draft.audio;
   if (draft.audio) $('#audio-preview').src = blobUrl('sheet', draft.audio);
@@ -175,9 +238,12 @@ for (const input of [$('#in-camera'), $('#in-gallery')]) {
     const files = [...input.files];
     input.value = '';
     if (!files.length || !draft) return;
+    const first = draft.photos.length;
     for (const f of files) draft.photos.push(await compressImage(f));
     renderPhotos();
-    toast(`已添加 ${files.length} 张凭证`);
+    // 还没填金额时自动识别第一张新凭证
+    if (!amountEl.value.trim()) recognizePhoto(draft.photos[first]);
+    else toast(`已添加 ${files.length} 张凭证`);
   });
 }
 $('#btn-audio-del').addEventListener('click', () => { draft.audio = null; renderAudio(); });
@@ -243,6 +309,7 @@ let parseTimer;
 for (const el of [noteEl, actEl]) el.addEventListener('input', () => { clearTimeout(parseTimer); parseTimer = setTimeout(autoParse, 400); });
 amountEl.addEventListener('input', () => { draft.amountTouched = true; $('#amount-auto').hidden = true; });
 durEl.addEventListener('input', () => { draft.durTouched = true; });
+timeEl.addEventListener('input', () => { draft.timeTouched = true; });
 $('#f-direction').addEventListener('click', e => {
   const b = e.target.closest('[data-dir]');
   if (!b) return;

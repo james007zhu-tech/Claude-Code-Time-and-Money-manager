@@ -17,6 +17,7 @@ async function getClient(apiKey) {
   return cached.client;
 }
 
+// user 可以是文字，也可以是内容块数组（例如图片 + 文字）
 async function ask(cfg, { system, user, effort, schema, maxTokens = 16000 }) {
   const client = await getClient(cfg.apiKey);
   const params = {
@@ -112,6 +113,51 @@ export async function aiAnswer(cfg, question, digest) {
 不要推荐具体的股票或基金。`;
   const user = `问题：${question}\n\n数据（JSON）：\n${JSON.stringify(digest)}`;
   return ask(cfg, { system, user, effort: 'medium' });
+}
+
+// ---------- 看凭证 ----------
+const RECEIPT_SCHEMA = {
+  type: 'object',
+  additionalProperties: false,
+  required: ['isReceipt', 'merchant', 'purpose', 'amount', 'currency', 'date', 'time', 'category'],
+  properties: {
+    isReceipt: { type: 'boolean', description: '图片是不是消费凭证（小票、发票、付款截图、账单、行程单等）' },
+    merchant: { ...nullable('string'), description: '商家 / 收款方名称' },
+    purpose: { ...nullable('string'), description: '用途：买了什么或做了什么，简短中文，如「咖啡」「超市买菜」「两晚房费」；看不出就按商家类型推断' },
+    amount: { ...nullable('number'), description: '实际支付的总金额（不是小计、不是找零、不是收到的现金）' },
+    currency: { ...nullable('string'), enum: CURRENCIES.map(c => c.id).concat([null]) },
+    date: { ...nullable('string'), description: '消费日期 YYYY-MM-DD（公历；佛历年份要减 543）' },
+    time: { ...nullable('string'), description: '消费时间 HH:mm' },
+    category: { type: 'string', enum: CATEGORIES.map(c => c.id) },
+  },
+};
+
+const blobToBase64 = blob => new Promise((resolve, reject) => {
+  const r = new FileReader();
+  r.onload = () => resolve(String(r.result).split(',')[1]);
+  r.onerror = () => reject(r.error);
+  r.readAsDataURL(blob);
+});
+
+export async function aiReceipt(cfg, blob) {
+  const now = new Date();
+  const system = `你帮用户从消费凭证图片里读出记账信息。凭证可能是中文、泰文或英文：超市小票、餐厅账单、发票、微信/支付宝/银行 App 付款截图、打车行程单、酒店账单等。
+金额取实际支付的总额（实付、应付、Grand Total、ยอดสุทธิ、รวมทั้งสิ้น），不要取小计、折扣、找零、收到的现金。
+币种：CNY=人民币，THB=泰铢，USD=美元；没写币种时按凭证的语言和国家判断。
+泰国凭证常用佛历年份（2569 = 2026 年，两位数「69」也是 2569）。日期要换成公历。
+即使凭证上没写用途，也要根据商家类型和商品推断 purpose 和 category。
+支出类别：${CATEGORIES.map(c => `${c.id}=${c.name}`).join('，')}
+看不清的字段填 null，不要编造。`;
+  const user = [
+    { type: 'image', source: { type: 'base64', media_type: blob.type || 'image/jpeg', data: await blobToBase64(blob) } },
+    { type: 'text', text: `今天是 ${localStamp(now).slice(0, 10)}。请读出这张凭证的信息。` },
+  ];
+  const j = JSON.parse(await ask(cfg, { system, user, effort: 'low', schema: RECEIPT_SCHEMA, maxTokens: 4000 }));
+  if (!j.isReceipt && j.amount == null) throw new Error('这张图看起来不是消费凭证');
+  let time = null;
+  if (j.date) time = new Date(`${j.date}T${j.time || '12:00'}`).getTime() || null;
+  else if (j.time) { const d = new Date(); const [h, m] = j.time.split(':').map(Number); d.setHours(h, m, 0, 0); time = d.getTime(); }
+  return { merchant: j.merchant, purpose: j.purpose, amount: j.amount, currency: j.amount == null ? null : j.currency || getDefaultCurrency(), time, category: j.category };
 }
 
 export async function aiTest(cfg) {
