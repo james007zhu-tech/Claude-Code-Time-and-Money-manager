@@ -1,6 +1,6 @@
 // 设置页：电脑记录同步、提醒、语音、AI、备份
 import * as db from './db.js';
-import { catById, timeCatById } from './parser.js';
+import { catById, timeCatById, CURRENCIES, currencyById } from './parser.js';
 import { speechSupported, recorderSupported } from './voice.js';
 import { AI_MODELS, aiTest } from './ai.js';
 import { DEFAULT_APP_RULES } from './analytics.js';
@@ -10,8 +10,16 @@ import { dataChanged } from './sheet.js';
 const notifyState = () => (!('Notification' in window) ? '不支持' : { granted: '已开启', denied: '已拒绝（去系统设置里打开）', default: '未开启' }[Notification.permission]);
 
 $('#s-model').innerHTML = AI_MODELS.map(m => `<option value="${m.id}">${m.name}</option>`).join('');
+const curOptions = CURRENCIES.map(c => `<option value="${c.id}">${c.symbol} ${c.name}</option>`).join('');
+$('#s-default-cur').innerHTML = curOptions;
+$('#s-base-cur').innerHTML = curOptions;
 
 export function renderSettings() {
+  $('#s-default-cur').value = settings.defaultCurrency;
+  $('#s-base-cur').value = settings.baseCurrency;
+  $('#s-rate-THB').value = settings.rates.THB;
+  $('#s-rate-USD').value = settings.rates.USD;
+  if (settings.ratesUpdatedAt) $('#s-rates-state').textContent = `汇率更新于 ${new Date(settings.ratesUpdatedAt).toLocaleString()}。明确说「元/泰铢/美元」的按说的币种记。`;
   $('#s-remind').checked = settings.remindEnabled;
   $('#s-every').value = String(settings.remindEvery);
   $('#s-start').value = settings.remindStart;
@@ -41,6 +49,36 @@ export function renderSettings() {
 }
 
 const bind = (id, ev, fn) => $(id).addEventListener(ev, fn);
+bind('#s-default-cur', 'change', e => { settings.defaultCurrency = e.target.value; saveSettings(); dataChanged(); });
+bind('#s-base-cur', 'change', e => { settings.baseCurrency = e.target.value; saveSettings(); dataChanged(); });
+for (const cur of ['THB', 'USD']) {
+  bind(`#s-rate-${cur}`, 'change', e => {
+    const v = Number(e.target.value);
+    if (!(v > 0)) { toast('汇率要大于 0'); renderSettings(); return; }
+    settings.rates = { ...settings.rates, [cur]: v };
+    saveSettings();
+    dataChanged();
+  });
+}
+bind('#s-rates-update', 'click', async () => {
+  toast('正在获取汇率…');
+  try {
+    const res = await fetch('https://open.er-api.com/v6/latest/CNY');
+    const data = await res.json();
+    if (data.result !== 'success') throw new Error('汇率服务暂时不可用');
+    // 返回的是 1 人民币 = 多少外币，换成 1 外币 = 多少人民币
+    const rates = { CNY: 1 };
+    for (const c of CURRENCIES) if (c.id !== 'CNY' && data.rates[c.id]) rates[c.id] = Math.round(1 / data.rates[c.id] * 10000) / 10000;
+    settings.rates = { ...settings.rates, ...rates };
+    settings.ratesUpdatedAt = Date.now();
+    saveSettings();
+    renderSettings();
+    dataChanged();
+    toast(`已更新：1${currencyById('USD').name} = ¥${rates.USD}，1${currencyById('THB').name} = ¥${rates.THB}`);
+  } catch (e) {
+    toast('更新失败，可以手动填：' + e.message);
+  }
+});
 bind('#s-remind', 'change', async e => {
   settings.remindEnabled = e.target.checked;
   if (settings.remindEnabled) {
@@ -174,12 +212,13 @@ const dataURLToBlob = async u => (await fetch(u)).blob();
 bind('#s-csv', 'click', async () => {
   const recs = await db.allRecords();
   const cell = v => `"${String(v ?? '').replace(/"/g, '""')}"`;
-  const rows = [['开始时间', '做了什么', '说明', '用时(分钟)', '时间类别', '收支', '金额', '类别', '凭证张数', '有录音']];
+  const rows = [['开始时间', '做了什么', '说明', '用时(分钟)', '时间类别', '收支', '金额', '币种', '类别', '报销', '凭证张数', '有录音']];
   for (const r of recs) {
     const d = new Date(r.time);
     rows.push([
       `${dayKey(r.time)} ${pad(d.getHours())}:${pad(d.getMinutes())}`, r.activity, r.note, r.durationMin ?? '', r.timeCat ? timeCatById(r.timeCat).name : '',
-      r.amount != null ? (r.direction === 'in' ? '收入' : '支出') : '', r.amount ?? '', r.amount != null ? catById(r.category).name : '',
+      r.amount != null ? (r.direction === 'in' ? '收入' : '支出') : '', r.amount ?? '', r.amount != null ? currencyById(r.currency).name : '',
+      r.amount != null ? catById(r.category).name : '', r.reimbursable ? (r.reimbursed ? '已报销' : '待报销') : '',
       r.photos?.length || 0, r.audio ? '是' : '',
     ]);
   }

@@ -1,6 +1,6 @@
 // 可选：用 Claude 理解语音、回答「这几天干了什么」。
 // 用户在设置里填自己的 API Key，只存在本机；不填就用 parser.js 的本地理解。
-import { CATEGORIES, INCOME_CATEGORIES, TIME_CATS } from './parser.js';
+import { CATEGORIES, INCOME_CATEGORIES, TIME_CATS, CURRENCIES, currencyById, getDefaultCurrency } from './parser.js';
 
 const SDK_URL = 'https://cdn.jsdelivr.net/npm/@anthropic-ai/sdk@0.133.0/+esm';
 export const AI_MODELS = [
@@ -39,12 +39,14 @@ const nullable = type => ({ type: [type, 'null'] });
 const PARSE_SCHEMA = {
   type: 'object',
   additionalProperties: false,
-  required: ['type', 'title', 'note', 'amount', 'direction', 'category', 'timeCat', 'start', 'durationMin', 'account', 'liability', 'rangeStart', 'rangeEnd', 'rangeLabel', 'focus'],
+  required: ['type', 'title', 'note', 'amount', 'currency', 'reimbursable', 'direction', 'category', 'timeCat', 'start', 'durationMin', 'account', 'liability', 'rangeStart', 'rangeEnd', 'rangeLabel', 'focus'],
   properties: {
     type: { type: 'string', enum: ['entry', 'start', 'finish', 'balance', 'question'] },
     title: { type: 'string', description: '简短的事项名，如「写季度方案」「和客户吃饭」' },
     note: { type: 'string', description: '用户原话整理后的说明' },
-    amount: { ...nullable('number'), description: '金额（元）；balance 时是余额' },
+    amount: { ...nullable('number'), description: '金额（原币种）；balance 时是余额' },
+    currency: { ...nullable('string'), enum: CURRENCIES.map(c => c.id).concat([null]), description: '金额的币种；没有金额时为 null' },
+    reimbursable: { type: 'boolean', description: '这笔支出是否要找公司报销' },
     direction: { type: 'string', enum: ['out', 'in'] },
     category: { ...nullable('string'), enum: [...CATEGORIES, ...INCOME_CATEGORIES].map(c => c.id).concat([null]) },
     timeCat: { ...nullable('string'), enum: TIME_CATS.map(c => c.id).concat([null]) },
@@ -75,7 +77,9 @@ export async function aiParse(cfg, text, ctx = {}) {
 支出类别：${CATEGORIES.map(c => `${c.id}=${c.name}`).join('，')}
 收入类别：${INCOME_CATEGORIES.map(c => `${c.id}=${c.name}`).join('，')}
 时间类别：${TIME_CATS.map(c => `${c.id}=${c.name}`).join('，')}
-「5万3」= 53000，「一个半小时」= 90 分钟。没说到的字段填 null（liability 填 false，direction 填 out，focus 填 all，title/note 填原话）。`;
+币种：CNY=人民币（元、人民币、¥），THB=泰铢（泰铢、铢、฿），USD=美元（美元、美金、刀、$）。只说「块」或只说数字时，用默认币种 ${getDefaultCurrency()}（${currencyById(getDefaultCurrency()).name}）。
+报销：用户说「要报销」「公司出」「公费」等，reimbursable 为 true；说「报销款到账」是收入（direction=in，category=refund），reimbursable 为 false。
+「5万3」= 53000，「一个半小时」= 90 分钟。没说到的字段填 null（liability、reimbursable 填 false，direction 填 out，focus 填 all，title/note 填原话）。`;
   const user = `现在是 ${localStamp(now)}（星期${WEEK[now.getDay()]}）。${ctx.activity ? `用户正在做：「${ctx.activity}」。` : ''}\n用户说：${text}`;
   const json = JSON.parse(await ask(cfg, { system, user, effort: 'low', schema: PARSE_SCHEMA, maxTokens: 4000 }));
   return normalize(json, text);
@@ -89,9 +93,11 @@ function normalize(j, text) {
     return { type: 'question', text, focus: j.focus, range: { start, end, label: j.rangeLabel || '这段时间' } };
   }
   if (j.type === 'start') return { type: 'start', title: j.title, timeCat: j.timeCat };
-  if (j.type === 'balance') return { type: 'balance', account: j.account || j.title, value: j.amount, liability: j.liability, text };
+  const currency = j.currency || getDefaultCurrency();
+  if (j.type === 'balance') return { type: 'balance', account: j.account || j.title, value: j.amount, currency, liability: j.liability, text };
   const entry = {
     title: j.title, note: j.note || text, amount: j.amount, direction: j.direction,
+    currency: j.amount == null ? null : currency, reimbursable: j.amount != null && j.direction !== 'in' && j.reimbursable,
     category: j.amount == null ? null : j.category, timeCat: j.timeCat, start: ts(j.start), durationMin: j.durationMin,
   };
   if (j.type === 'finish') return { type: 'finish', entry: j.amount != null || j.note ? entry : null };
@@ -102,7 +108,7 @@ export async function aiAnswer(cfg, question, digest) {
   const system = `你是用户的私人时间与财富顾问。用户会问过去一段时间做了什么、时间花在哪、钱花在哪。
 根据提供的数据回答，用口语化的中文，像向朋友汇报一样，先给总体结论，再说重点，控制在 200 字以内，不要用 Markdown 表格。
 时间方面用德鲁克《卓有成效的管理者》的视角：时间花在要事上了吗？整块时间够不够？有哪些可以不做或交给别人？
-钱方面用巴菲特的常识：花得值不值、有没有结余、有没有消费负债。只根据数据说话，数据里没有的不要编；数据不够时直说缺什么。
+钱方面用巴菲特的常识：花得值不值、有没有结余、有没有消费负债。金额已折算成本位币；要报销的支出是公司的钱，不算个人花费，有待报销的要提醒用户去报。只根据数据说话，数据里没有的不要编；数据不够时直说缺什么。
 不要推荐具体的股票或基金。`;
   const user = `问题：${question}\n\n数据（JSON）：\n${JSON.stringify(digest)}`;
   return ask(cfg, { system, user, effort: 'medium' });

@@ -1,9 +1,17 @@
 // 纯计算：时间分析（德鲁克）、财务分析（巴菲特）、回顾问答的本地回答。
-import { TIME_CATS, timeCatById, catById, guessTimeCat } from './parser.js';
+import { TIME_CATS, timeCatById, catById, guessTimeCat, currencyById } from './parser.js';
 
 const MIN = 60000;
 const DAY = 86400000;
 const round2 = n => Math.round(n * 100) / 100;
+
+// ---------- 汇率：统计时都换算成本位币 ----------
+// rates：1 单位外币 = 多少人民币
+export const DEFAULT_RATES = { CNY: 1, THB: 0.2, USD: 7.1 };
+let FX = { base: 'CNY', rates: DEFAULT_RATES };
+export const setFx = (base, rates) => { FX = { base: currencyById(base).id, rates: { ...DEFAULT_RATES, ...rates, CNY: 1 } }; };
+export const baseCurrency = () => FX.base;
+export const toBase = (amount, currency) => (amount || 0) * (FX.rates[currency || 'CNY'] ?? 1) / (FX.rates[FX.base] ?? 1);
 
 export const fmtMin = min => {
   min = Math.round(min);
@@ -12,11 +20,14 @@ export const fmtMin = min => {
   return m ? `${h}小时${m}分` : `${h}小时`;
 };
 export const fmtHours = min => (min >= 600 ? `${Math.round(min / 60)}小时` : fmtMin(min));
-export const fmtMoney = n => {
+// 不传币种时按本位币显示
+export const fmtMoney = (n, currency = FX.base) => {
   const v = round2(n || 0);
   const s = Math.abs(v) >= 10000 ? (Math.abs(v) / 10000).toFixed(Math.abs(v) >= 1e6 ? 0 : 2).replace(/\.?0+$/, '') + '万' : (Number.isInteger(v) ? String(Math.abs(v)) : Math.abs(v).toFixed(2));
-  return (v < 0 ? '-¥' : '¥') + s;
+  return (v < 0 ? '-' : '') + currencyById(currency).symbol + s;
 };
+// 记录自己的金额（原币种）
+export const fmtRecMoney = e => fmtMoney(e.amount, e.currency || 'CNY');
 
 // ---------- 时间 ----------
 
@@ -68,7 +79,7 @@ export function summarizeTime(events, usage, range, rules = compileRules(DEFAULT
     byCat[cat] = (byCat[cat] || 0) + min;
     const title = e.activity || e.note?.slice(0, 20) || timeCatById(cat).name;
     const t = byTitle.get(title) || { title, min: 0, n: 0, cat, money: 0 };
-    t.min += min; t.n++; t.money += e.direction !== 'in' ? e.amount || 0 : 0;
+    t.min += min; t.n++; t.money += e.direction !== 'in' ? toBase(e.amount, e.currency) : 0;
     byTitle.set(title, t);
   }
   const device = { total: 0, byCat: {}, byApp: new Map(), byDevice: {} };
@@ -138,18 +149,36 @@ export function diagnosis(titles, tags, weeks) {
 }
 
 // ---------- 钱 ----------
+// 金额都换算成本位币。要报销的支出不算自己的花费，报销款到账也不算收入，单独统计。
 export function summarizeMoney(events, range) {
-  let out = 0, inc = 0;
-  const byCat = {}, byIncome = {};
-  const list = [];
+  let out = 0, inc = 0, reimbPending = 0, reimbDone = 0, refundIn = 0;
+  const byCat = {}, byIncome = {}, byCurrency = {};
+  const list = [], pending = [];
   for (const e of events) {
     if (e.amount == null || e.time < range.start || e.time >= range.end) continue;
     list.push(e);
-    if (e.direction === 'in') { inc += e.amount; byIncome[e.category] = (byIncome[e.category] || 0) + e.amount; }
-    else { out += e.amount; byCat[e.category] = (byCat[e.category] || 0) + e.amount; }
+    const v = toBase(e.amount, e.currency);
+    const cur = e.currency || 'CNY';
+    const c = (byCurrency[cur] ??= { out: 0, in: 0 });
+    if (e.direction === 'in') {
+      c.in += e.amount;
+      if (e.category === 'refund') { refundIn += v; continue; }
+      inc += v; byIncome[e.category] = (byIncome[e.category] || 0) + v;
+    } else {
+      c.out += e.amount;
+      if (e.reimbursable) {
+        if (e.reimbursed) reimbDone += v; else { reimbPending += v; pending.push(e); }
+        continue;
+      }
+      out += v; byCat[e.category] = (byCat[e.category] || 0) + v;
+    }
   }
-  const biggest = list.filter(e => e.direction !== 'in').sort((a, b) => b.amount - a.amount).slice(0, 5);
-  return { out: round2(out), in: round2(inc), net: round2(inc - out), byCat, byIncome, biggest, count: list.length };
+  const biggest = list.filter(e => e.direction !== 'in' && !e.reimbursable).sort((a, b) => toBase(b.amount, b.currency) - toBase(a.amount, a.currency)).slice(0, 5);
+  return {
+    out: round2(out), in: round2(inc), net: round2(inc - out), byCat, byIncome, biggest, count: list.length,
+    byCurrency, multiCurrency: Object.keys(byCurrency).length > 1,
+    reimbPending: round2(reimbPending), reimbDone: round2(reimbDone), refundIn: round2(refundIn), pending,
+  };
 }
 
 // 资产负债：每个账户取 at 之前最新的余额
@@ -190,9 +219,10 @@ export function balanceSheet(accounts, balances, at = Date.now()) {
   for (const a of accounts) {
     if (a.archived) continue;
     const b = latest.get(a.id);
-    const v = b?.value ?? 0;
+    const raw = b?.value ?? 0;
+    const v = toBase(raw, a.currency);
     const t = accountType(a.type);
-    rows.push({ account: a, value: v, updated: b?.time ?? null, type: t });
+    rows.push({ account: a, value: v, raw, currency: a.currency || 'CNY', updated: b?.time ?? null, type: t });
     if (t.liability) { liabilities += v; if (t.consumer) consumerDebt += v; }
     else { assets += v; if (t.liquid) liquid += v; if (t.invest) invest += v; }
   }
@@ -235,7 +265,7 @@ export function avgMonthlyOut(events, months = 3, now = Date.now()) {
   const end = new Date(d.getFullYear(), d.getMonth(), 1).getTime();
   const firstEvent = Math.min(...events.filter(e => e.amount != null).map(e => e.time), end);
   const span = Math.max(1, Math.round((end - Math.max(start, firstEvent)) / (30 * DAY)));
-  const out = events.filter(e => e.amount != null && e.direction !== 'in' && e.time >= start && e.time < end).reduce((s, e) => s + e.amount, 0);
+  const out = events.filter(e => e.amount != null && e.direction !== 'in' && !e.reimbursable && e.time >= start && e.time < end).reduce((s, e) => s + toBase(e.amount, e.currency), 0);
   return out ? out / span : 0;
 }
 
@@ -270,7 +300,11 @@ export function localAnswer(q, { events, usage, rules }) {
       if (m.in) s += `，收入${fmtMoney(m.in)}，结余${fmtMoney(m.net)}`;
       if (days > 1) s += `，平均每天花${fmtMoney(m.out / days)}`;
       parts.push(s + '。');
-      if (m.biggest[0]) parts.push(`最大一笔是「${m.biggest[0].activity || m.biggest[0].note || catById(m.biggest[0].category).name}」${fmtMoney(m.biggest[0].amount)}。`);
+      if (m.multiCurrency) {
+        parts.push(`（按本位币折算；原币种：${Object.entries(m.byCurrency).filter(([, c]) => c.out).map(([cur, c]) => `${currencyById(cur).name}支出${fmtMoney(c.out, cur)}`).join('，')}）`);
+      }
+      if (m.biggest[0]) parts.push(`最大一笔是「${m.biggest[0].activity || m.biggest[0].note || catById(m.biggest[0].category).name}」${fmtRecMoney(m.biggest[0])}。`);
+      if (m.reimbPending) parts.push(`另有待报销${fmtMoney(m.reimbPending)}（${m.pending.length}笔）还没报。`);
     }
   }
   return parts.join('');
@@ -295,7 +329,7 @@ export function dataDigest(q, { events, usage, rules, sheet }) {
     e.activity || '',
     e.note || '',
     e.durationMin ? `用时${e.durationMin}分钟` : '',
-    e.amount != null ? `${e.direction === 'in' ? '收入' : '支出'}${e.amount}元(${catById(e.category).name})` : '',
+    e.amount != null ? `${e.direction === 'in' ? '收入' : '支出'}${e.amount}${currencyById(e.currency).name}(${catById(e.category).name})${e.reimbursable ? (e.reimbursed ? '[已报销]' : '[待报销]') : ''}` : '',
   ].filter(Boolean).join(' | '));
   return {
     范围: range.label,
@@ -303,7 +337,12 @@ export function dataDigest(q, { events, usage, rules, sheet }) {
     事项排行: t.titles.slice(0, 20).map(x => ({ 事项: x.title, 分钟: Math.round(x.min), 次数: x.n })),
     电脑使用分钟_按应用: t.device.apps.slice(0, 15).map(a => ({ 应用: a.app, 分钟: Math.round(a.min), 类别: timeCatById(a.cat).name })),
     整块专注: { 总分钟: Math.round(t.focus.totalMin), 最长分钟: Math.round(t.focus.longestMin), 九十分钟以上次数: t.focus.big },
-    收支: { 支出: m.out, 收入: m.in, 结余: m.net, 支出按类别: Object.fromEntries(Object.entries(m.byCat).map(([k, v]) => [catById(k).name, round2(v)])) },
+    收支: {
+      本位币: currencyById(FX.base).name, 说明: '金额已按汇率换算成本位币；要报销的支出不计入个人支出，报销款不计入收入',
+      支出: m.out, 收入: m.in, 结余: m.net, 待报销: m.reimbPending, 已报销: m.reimbDone,
+      支出按类别: Object.fromEntries(Object.entries(m.byCat).map(([k, v]) => [catById(k).name, round2(v)])),
+      各币种原始金额: Object.fromEntries(Object.entries(m.byCurrency).map(([k, c]) => [currencyById(k).name, { 支出: round2(c.out), 收入: round2(c.in) }])),
+    },
     当前净资产: sheet ? { 资产: sheet.assets, 负债: sheet.liabilities, 净资产: sheet.net } : null,
     明细: lines.length > 300 ? lines.slice(-300) : lines,
     明细说明: inRange.length > 300 ? `共${inRange.length}条，只列出最近300条` : `共${inRange.length}条`,

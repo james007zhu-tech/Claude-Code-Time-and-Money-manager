@@ -1,5 +1,6 @@
 // 各页面共用的小工具和设置
-import { DEFAULT_APP_RULES } from './analytics.js';
+import { DEFAULT_APP_RULES, DEFAULT_RATES, setFx } from './analytics.js';
+import { setDefaultCurrency } from './parser.js';
 
 export const $ = (sel, el = document) => el.querySelector(sel);
 export const $$ = (sel, el = document) => [...el.querySelectorAll(sel)];
@@ -25,9 +26,18 @@ export const DEFAULT_SETTINGS = {
   aiEnabled: false, apiKey: '', model: 'claude-opus-5-5',
   appRules: DEFAULT_APP_RULES,
   growthRate: 6,
+  baseCurrency: 'CNY',      // 统计折算成哪种货币
+  defaultCurrency: 'CNY',   // 说「块」或不带单位时指哪种货币（人在哪就设哪种）
+  rates: DEFAULT_RATES,     // 1 单位外币 = 多少人民币
+  ratesUpdatedAt: 0,
 };
 export const settings = { ...DEFAULT_SETTINGS, ...store.get('settings', {}) };
-export const saveSettings = () => store.set('settings', settings);
+export function applyCurrencySettings() {
+  setFx(settings.baseCurrency, settings.rates);
+  setDefaultCurrency(settings.defaultCurrency);
+}
+applyCurrencySettings();
+export const saveSettings = () => { store.set('settings', settings); applyCurrencySettings(); };
 export const aiConfig = () => (settings.aiEnabled && settings.apiKey ? { apiKey: settings.apiKey, model: settings.model } : null);
 
 let toastTimer;

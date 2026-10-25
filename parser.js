@@ -5,12 +5,13 @@ export const CATEGORIES = [
   { id: 'food', name: '餐饮', icon: '🍜', kw: ['吃', '饭', '餐', '早点', '夜宵', '宵夜', '外卖', '咖啡', '奶茶', '饮料', '水果', '零食', '火锅', '烧烤', '面条', '拉面', '米粉', '包子', '茶', '酒', '聚餐', '食堂', '买单', '美团', '饿了么', '喝'] },
   { id: 'transport', name: '交通', icon: '🚕', kw: ['打车', '滴滴', '出租', '地铁', '公交', '高铁', '火车', '机票', '飞机', '加油', '油费', '停车', '过路费', '高速', '单车', '车费', '车票', '网约车', '充电', '洗车'] },
   { id: 'shopping', name: '购物', icon: '🛍️', kw: ['买', '超市', '淘宝', '京东', '拼多多', '衣服', '裤子', '鞋', '日用', '商场', '网购', '便利店'] },
-  { id: 'fun', name: '娱乐', icon: '🎮', kw: ['电影', '游戏', 'ktv', '唱歌', '旅游', '门票', '健身', '打球', '演唱会', '会员', '景点', '酒店'] },
+  { id: 'fun', name: '娱乐', icon: '🎮', kw: ['电影', '游戏', 'ktv', '唱歌', '门票', '健身', '打球', '演唱会', '会员', '按摩', 'spa', '酒吧'] },
+  { id: 'travel', name: '旅行住宿', icon: '🏨', kw: ['酒店', '住宿', '民宿', '旅馆', '签证', '旅游', '景点', '行李', '换汇', 'airbnb'] },
   { id: 'home', name: '居家', icon: '🏠', kw: ['房租', '水费', '电费', '燃气', '物业', '话费', '宽带', '维修', '家具', '家电', '保洁', '快递'] },
   { id: 'health', name: '医疗', icon: '💊', kw: ['医院', '看病', '药', '挂号', '体检', '牙', '诊所'] },
   { id: 'study', name: '学习', icon: '📚', kw: ['书', '课', '培训', '学费', '考试', '文具', '打印'] },
   { id: 'social', name: '人情', icon: '🎁', kw: ['红包', '礼物', '请客', '份子', '送礼', '随礼', '礼金'] },
-  { id: 'work', name: '工作', icon: '💼', kw: ['办公', '出差', '报销', '客户', '差旅', '会议'] },
+  { id: 'work', name: '工作', icon: '💼', kw: ['办公', '出差', '客户', '差旅', '会议'] },
   { id: 'invest', name: '投资', icon: '📈', kw: ['基金', '股票', '定投', '理财', '债券', '买入', '申购'] },
   { id: 'other', name: '其他', icon: '📝', kw: [] },
 ];
@@ -29,7 +30,7 @@ export const INCOME_CATEGORIES = [
 export const TIME_CATS = [
   { id: 'deep', name: '要事·深度工作', short: '要事', icon: '🎯', kind: 'focus', kw: ['写', '方案', '设计', '编程', '代码', '开发', '报告', '策划', '研究', '分析', '思考', '规划', '复盘', '创作', '写作'] },
   { id: 'meeting', name: '沟通会议', short: '沟通', icon: '💬', kind: 'collab', kw: ['开会', '会议', '沟通', '电话', '拜访', '客户', '面试', '谈', '约见', '汇报', '讨论', '见'] },
-  { id: 'admin', name: '事务杂项', short: '杂务', icon: '📋', kind: 'admin', kw: ['邮件', '回复', '报销', '整理', '填表', '审批', '办事', '手续', '排队', '杂事'] },
+  { id: 'admin', name: '事务杂项', short: '杂务', icon: '📋', kind: 'admin', kw: ['邮件', '回复', '整理', '填表', '审批', '办事', '手续', '排队', '杂事'] },
   { id: 'learn', name: '学习成长', short: '学习', icon: '📚', kind: 'focus', kw: ['学习', '看书', '书', '读书', '上课', '课程', '培训', '练习', '背单词', '听课'] },
   { id: 'health', name: '运动健康', short: '健康', icon: '🏃', kind: 'life', kw: ['跑步', '健身', '运动', '游泳', '瑜伽', '散步', '打球', '医院', '看病', '体检', '睡觉', '午睡'] },
   { id: 'family', name: '家庭生活', short: '生活', icon: '🏠', kind: 'life', kw: ['家务', '做饭', '吃饭', '买菜', '超市', '陪', '孩子', '老婆', '老公', '父母', '家人', '接送', '带娃', '洗衣'] },
@@ -48,8 +49,19 @@ const CN_UNIT = { 十: 10, 拾: 10, 百: 100, 佰: 100, 千: 1000, 仟: 1000 };
 const CN_CHARS = Object.keys(CN_DIGIT).join('') + Object.keys(CN_UNIT).join('') + '万';
 // 128 / 28.5 / 5万3 / 1.5万 / 一百二十八
 export const NUM = `(?:\\d+(?:\\.\\d+)?(?:[万千](?:[\\d一二三四五六七八九两](?![\\d.]))?)?|[${CN_CHARS}]+)`;
-const YUAN = '(?:块钱|块|元钱|元|圆|快)';
 const JIAO = '(?:毛钱|毛|角)';
+
+// ---------- 币种 ----------
+export const CURRENCIES = [
+  { id: 'CNY', name: '人民币', symbol: '¥' },
+  { id: 'THB', name: '泰铢', symbol: '฿' },
+  { id: 'USD', name: '美元', symbol: '$' },
+];
+export const currencyById = id => CURRENCIES.find(c => c.id === id) || CURRENCIES[0];
+// 「块」和不带单位的数字不指明币种，用当前默认币种（人在泰国时可以设成泰铢）
+let defaultCurrency = 'CNY';
+export const setDefaultCurrency = c => { defaultCurrency = currencyById(c).id; };
+export const getDefaultCurrency = () => defaultCurrency;
 const MEASURE = '个人次份张件杯瓶位天小斤盒包';
 
 export function cnToNumber(str) {
@@ -87,45 +99,65 @@ export function cnToNumber(str) {
 
 const round2 = n => Math.round(n * 100) / 100;
 
-// 找出所有金额，返回 [{index, length, value}]
+// 找出所有金额，返回 [{index, length, value, currency}]
 function findAmounts(src) {
   let rest = src;
   const found = [];
-  const take = (re, toValue) => {
+  const take = (re, currency, toValue) => {
     rest = rest.replace(re, (m, ...args) => {
       const index = args[args.length - 2];
       const v = toValue(...args);
-      if (v > 0 && Number.isFinite(v)) found.push({ index, length: m.length, value: round2(v) });
+      if (v > 0 && Number.isFinite(v)) found.push({ index, length: m.length, value: round2(v), currency: currency || defaultCurrency });
       return ' '.repeat(m.length);
     });
   };
-  // 128块 / 28块5 / 三块五毛 / 十块钱
-  take(new RegExp(`(${NUM})\\s*${YUAN}(?:\\s*(?:(${NUM})\\s*${JIAO}|([一二三四五六七八九两\\d])(?![\\d${CN_CHARS}${MEASURE}])))?`, 'g'),
-    (a, jiao1, jiao2) => cnToNumber(a) + (jiao1 || jiao2 ? cnToNumber(jiao1 || jiao2) / 10 : 0));
-  take(new RegExp(`(${NUM})\\s*${JIAO}`, 'g'), a => cnToNumber(a) / 10);
-  take(/[¥￥]\s*(\d+(?:\.\d+)?)/g, a => parseFloat(a));
-  take(/(\d+(?:\.\d+)?)\s*(?:rmb|人民币)/gi, a => parseFloat(a));
+  const num = a => cnToNumber(a);
+  // 20美元 / 20刀 / $20；300泰铢 / 300铢 / ฿300（「三百块泰铢」也算泰铢）
+  take(new RegExp(`(${NUM})\\s*(?:块|元)?\\s*(?:美元|美金|刀|dollars?|bucks?|usd)`, 'gi'), 'USD', num);
+  take(/[$＄]\s*(\d+(?:\.\d+)?)|(\d+(?:\.\d+)?)\s*\$/g, 'USD', (a, b) => parseFloat(a || b));
+  take(new RegExp(`(${NUM})\\s*(?:块)?\\s*(?:泰铢|铢|泰币|baht|thb)`, 'gi'), 'THB', num);
+  take(/฿\s*(\d+(?:\.\d+)?)/g, 'THB', a => parseFloat(a));
+  // 人民币：128元 / ¥35 / 35rmb；「块」用默认币种：28块5 / 三块五毛 / 十块钱
+  const withJiao = unit => new RegExp(`(${NUM})\\s*${unit}(?:\\s*(?:(${NUM})\\s*${JIAO}|([一二三四五六七八九两\\d])(?![\\d${CN_CHARS}${MEASURE}])))?`, 'g');
+  const yuanJiao = (a, jiao1, jiao2) => cnToNumber(a) + (jiao1 || jiao2 ? cnToNumber(jiao1 || jiao2) / 10 : 0);
+  take(withJiao('(?:元钱|元|圆)'), 'CNY', yuanJiao);
+  take(withJiao('(?:块钱|块|快)'), null, yuanJiao);
+  take(new RegExp(`(${NUM})\\s*${JIAO}`, 'g'), null, a => cnToNumber(a) / 10);
+  take(/[¥￥]\s*(\d+(?:\.\d+)?)/g, 'CNY', a => parseFloat(a));
+  take(/(\d+(?:\.\d+)?)\s*(?:rmb|人民币)/gi, 'CNY', a => parseFloat(a));
   if (!found.length) {
-    // 没说「块/元」时，看「花了 35」「余额 5万3」之类
+    // 没说单位时，看「花了 35」「余额 5万3」之类
     take(new RegExp(`(?:花了|花费|付了|付款|支付|消费|一共|总共|共计|合计|总计|掏了|用了|余额|还剩|还有|到账|收到|进账|入账|赚了|市值|欠了|欠|发了|是)\\s*(${NUM})(?![${CN_CHARS}\\d]*\\s*(?:个|点|小时|分钟|天|号|月|年|岁|人|次))`, 'g'),
-      a => cnToNumber(a));
+      /人民币|rmb/i.test(src) ? 'CNY' : /泰铢|泰币|baht/i.test(src) ? 'THB' : /美元|美金|usd/i.test(src) ? 'USD' : null, num);
   }
   return found.sort((a, b) => a.index - b.index);
 }
 
-export function parseAmount(text) {
-  if (!text) return null;
+// 金额和币种；一句话里有多种币种时，取第一种（其余留在说明里）
+export function parseMoney(text) {
+  if (!text) return { amount: null, currency: null };
   const src = String(text).replace(/(\d),(\d{3})/g, '$1$2');
-  const found = findAmounts(src);
-  if (!found.length) return null;
+  const all = findAmounts(src);
+  if (!all.length) return { amount: null, currency: null };
+  const currency = all[0].currency;
+  const found = all.filter(f => f.currency === currency);
   // 说了「一共/总共」就以它为准，否则把几笔加起来
   const totalKw = /一共|总共|共计|合计|总计/g;
   let km;
   while ((km = totalKw.exec(src))) {
     const after = found.find(f => f.index >= km.index && f.index - (km.index + km[0].length) <= 4);
-    if (after) return after.value;
+    if (after) return { amount: after.value, currency };
   }
-  return round2(found.reduce((s, f) => s + f.value, 0));
+  return { amount: round2(found.reduce((s, f) => s + f.value, 0)), currency };
+}
+export const parseAmount = text => parseMoney(text).amount;
+
+// 是否要报销：true / false / null（没提）
+export function parseReimburse(text) {
+  const s = String(text || '');
+  if (/不(用|能|可以|需要)?报|自费|自己出|私人的|个人的/.test(s)) return false;
+  if (/报销|公费|公司出|公司付|公司的钱|走公账|算公司|报账/.test(s)) return true;
+  return null;
 }
 
 function bestByKeywords(list, text) {
@@ -293,14 +325,14 @@ export function parseUtterance(text, now = Date.now()) {
     return { type: 'start', title: cleanTitle(title), timeCat: guessTimeCat(title), planMin: parseDuration(start[5]) || 0 };
   }
 
-  const amount = parseAmount(s);
+  const { amount, currency } = parseMoney(s);
   const bal = /(余额|还剩|现在有|里有|账上|市值|总值|估值|还欠|欠款|欠了|房贷|车贷|信用卡|负债|贷款)/.exec(s);
   if (bal && amount != null && !/花|买|付/.test(s.replace(/支付宝/g, ''))) {
     const liability = /欠|贷|信用卡|负债/.test(s);
     let account = s.slice(0, bal.index).replace(/^(我的?|现在|目前)+/, '').replace(/(的|里|上|卡里)$/, '').trim();
     if (!account) account = liability ? s.match(/房贷|车贷|信用卡|贷款/)?.[0] || '负债' : '现金';
     if (/房贷|车贷/.test(bal[1]) && !/房贷|车贷/.test(account)) account = (account + bal[1]).trim();
-    return { type: 'balance', account, value: amount, liability, text: raw };
+    return { type: 'balance', account, value: amount, currency, liability, text: raw };
   }
 
   return { type: 'entry', ...parseEntry(s, now) };
@@ -308,13 +340,15 @@ export function parseUtterance(text, now = Date.now()) {
 
 export function parseEntry(text, now = Date.now()) {
   const s = String(text);
-  const amount = parseAmount(s);
-  const income = amount != null && /(工资|薪水|薪资|收入|到账|收到|奖金|分红|利息|进账|赚了|入账|报销款|退款|发了|提成|稿费)/.test(s);
+  const { amount, currency } = parseMoney(s);
+  const income = amount != null && /(工资|薪水|薪资|收入|到账|收到|奖金|分红|利息|进账|赚了|入账|报销款|报销回来|报销下来|退款|发了|提成|稿费)/.test(s);
   const time = parseTimeInfo(s, now);
   return {
     title: cleanTitle(stripForTitle(s)),
     note: s.trim(),
     amount,
+    currency: amount == null ? null : currency,
+    reimbursable: !income && amount != null && parseReimburse(s) === true,
     direction: income ? 'in' : 'out',
     category: amount == null ? null : income ? guessIncomeCategory(s) : guessCategory(s) || 'other',
     timeCat: guessTimeCat(s),
@@ -328,6 +362,7 @@ function stripForTitle(s) {
   for (const f of findAmounts(t).reverse()) t = t.slice(0, f.index) + t.slice(f.index + f.length);
   t = t.replace(new RegExp(`${CLOCK}\\s*(?:到|至|-|~|—|－)\\s*${CLOCK}`, 'g'), ' ')
     .replace(new RegExp(`(${NUM}|半)\\s*(?:个)?\\s*(半)?\\s*(小时|钟头|分钟)(半)?`, 'g'), ' ')
-    .replace(/(花了|花费|付了|一共|总共|用了|大概|左右|差不多)/g, ' ');
+    .replace(/(花了|花费|付了|一共|总共|用了|大概|左右|差不多)/g, ' ')
+    .replace(/[，,\s]*(这笔|这个|这些)?(要|需要|可以|能|找公司)(报销|报账)(的)?|[，,\s]*(公司出|公司付|公费)/g, ' ');
   return t.trim() || s;
 }

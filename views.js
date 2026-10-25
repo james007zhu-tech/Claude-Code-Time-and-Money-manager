@@ -1,10 +1,10 @@
 // 回顾（这几天/这几年干了什么）、时间管理（德鲁克）、财富管理（巴菲特）
 import * as db from './db.js';
-import { parseUtterance, parseRange, rangeOf, timeCatById, catById, TIME_CATS } from './parser.js';
+import { parseUtterance, parseRange, rangeOf, timeCatById, catById, TIME_CATS, CURRENCIES, currencyById, getDefaultCurrency } from './parser.js';
 import { VoiceCapture, speak, stopSpeaking } from './voice.js';
 import { aiParse, aiAnswer } from './ai.js';
 import {
-  fmtMin, fmtHours, fmtMoney, summarizeTime, summarizeMoney, compileRules, diagnosis, localAnswer, dataDigest,
+  fmtMin, fmtHours, fmtMoney, fmtRecMoney, toBase, baseCurrency, summarizeTime, summarizeMoney, compileRules, diagnosis, localAnswer, dataDigest,
   ACCOUNT_TYPES, accountType, balanceSheet, netWorthSeries, healthCheck, futureValue, avgMonthlyOut,
 } from './analytics.js';
 import { $, esc, uid, store, settings, saveSettings, aiConfig, toast, resetPool, dayKey, dayLabel, barRow, chips } from './ui.js';
@@ -54,7 +54,9 @@ export async function renderReview() {
       <div class="kpi"><div class="muted">电脑使用</div><b>${t.device.total ? fmtHours(t.device.total) : '—'}</b></div>
       <div class="kpi"><div class="muted">支出</div><b>${fmtMoney(m.out)}</b></div>
       <div class="kpi"><div class="muted">收入</div><b>${fmtMoney(m.in)}</b></div>
+      ${m.reimbPending || m.reimbDone ? `<div class="kpi"><div class="muted">待报销</div><b>${fmtMoney(m.reimbPending)}</b></div><div class="kpi"><div class="muted">已报销</div><b>${fmtMoney(m.reimbDone)}</b></div>` : ''}
     </div>
+    ${currencyNote(m)}
     ${t.recorded ? `<h4>时间花在</h4>${Object.entries(t.byCat).sort((a, b) => b[1] - a[1]).map(([id, v]) => { const c = timeCatById(id); return barRow(`${c.icon} ${c.short}`, v, catMax, fmtHours(v), `${Math.round(v / t.recorded * 100)}%`); }).join('')}` : ''}
     ${t.titles.length ? `<h4>主要在做</h4><div class="tags">${t.titles.slice(0, 10).map(x => `<span class="tagpill">${esc(x.title)} <b>${fmtHours(x.min)}</b></span>`).join('')}</div>` : ''}
     ${m.out ? `<h4>钱花在</h4>${Object.entries(m.byCat).sort((a, b) => b[1] - a[1]).slice(0, 6).map(([id, v]) => { const c = catById(id); return barRow(`${c.icon} ${c.name}`, v, moneyMax, fmtMoney(v)); }).join('')}` : ''}
@@ -293,6 +295,7 @@ export async function renderWealth() {
   const sMax = Math.max(1, ...series.map(s => Math.abs(s.value)));
   const avgSave = Math.max(0, Math.round(estimateMonthlySaving(records)));
   const principal = Math.round(sheet.invest || 0);
+  const allPending = records.filter(r => r.reimbursable && !r.reimbursed && r.amount != null).sort((a, b) => a.time - b.time);
   const pct = v => (v == null ? '—' : `${Math.round(v * 100)}%`);
   const check = (ok, text, tip) => `<div class="check ${ok == null ? 'na' : ok ? 'ok' : 'warn'}"><span>${ok == null ? '·' : ok ? '✅' : '⚠️'}</span><div><div>${text}</div><div class="muted small">${tip}</div></div></div>`;
 
@@ -313,7 +316,11 @@ export async function renderWealth() {
       <div class="kpi"><div class="muted">结余</div><b>${fmtMoney(month.net)}</b></div>
       <div class="kpi"><div class="muted">储蓄率</div><b>${pct(h.savingsRate)}</b></div>
     </div>
+    ${currencyNote(month)}
+    <p class="hint">要报销的支出不算进自己的花费，报销款到账也不算收入。</p>
   </div>
+
+  ${reimbCard(allPending)}
 
   <div class="card">
     <h3>财务体检</h3>
@@ -327,8 +334,8 @@ export async function renderWealth() {
     <div class="card-head"><h3>账户</h3><button class="btn small" data-w="add-account">＋ 添加</button></div>
     ${sheet.rows.length ? sheet.rows.sort((a, b) => (!!a.type.liability - !!b.type.liability) || b.value - a.value).map(r => `<div class="acct-row" data-account="${r.account.id}">
       <span class="acct-icon">${r.type.icon}</span>
-      <div class="grow"><div>${esc(r.account.name)}</div><div class="muted small">${r.type.name}${r.updated ? ' · ' + dayLabel(r.updated).split(' ')[0] + '更新' : ''}</div></div>
-      <b class="${r.type.liability ? 'neg-text' : ''}">${r.type.liability ? '-' : ''}${fmtMoney(r.value)}</b>
+      <div class="grow"><div>${esc(r.account.name)}</div><div class="muted small">${r.type.name}${r.updated ? ' · ' + dayLabel(r.updated).split(' ')[0] + '更新' : ''}${r.currency !== baseCurrency() ? ` · ≈${fmtMoney(r.value)}` : ''}</div></div>
+      <b class="${r.type.liability ? 'neg-text' : ''}">${r.type.liability ? '-' : ''}${fmtMoney(r.raw, r.currency)}</b>
     </div>`).join('') : '<p class="muted">还没有账户。说「支付宝余额2万」就会自动建一个。</p>'}
   </div>
 
@@ -375,6 +382,28 @@ export async function renderWealth() {
   updateFV();
 }
 
+// 有多种币种时，说明是按汇率折算的，并列出原币金额
+function currencyNote(m) {
+  if (!m.multiCurrency && Object.keys(m.byCurrency)[0] === baseCurrency()) return '';
+  const parts = Object.entries(m.byCurrency).map(([cur, c]) =>
+    `${currencyById(cur).symbol} ${[c.out ? `支出 ${fmtMoney(c.out, cur)}` : '', c.in ? `收入 ${fmtMoney(c.in, cur)}` : ''].filter(Boolean).join('、')}`).filter(s => /支出|收入/.test(s));
+  return parts.length ? `<p class="hint">按汇率折算成${currencyById(baseCurrency()).name}。原币：${parts.join('；')}</p>` : '';
+}
+
+function reimbCard(pending) {
+  if (!pending.length) return '';
+  const total = pending.reduce((s, r) => s + toBase(r.amount, r.currency), 0);
+  return `<div class="card">
+    <div class="card-head"><h3>待报销 ${fmtMoney(total)}</h3><button class="btn small" data-settle="all">全部已报</button></div>
+    <p class="muted small">说「报销款到账 3000」会自动帮你核销。</p>
+    ${pending.map(r => `<div class="act-row">
+      <span class="grow">${esc(r.activity || r.note || catById(r.category).name)} <small class="muted">${dayLabel(r.time).split(' ')[0]}</small></span>
+      <b>${fmtRecMoney(r)}</b>
+      <button class="btn small ghost" data-settle="${r.id}">已报</button>
+    </div>`).join('')}
+  </div>`;
+}
+
 function estimateMonthlySaving(records) {
   const d = new Date();
   const start = new Date(d.getFullYear(), d.getMonth() - 3, 1).getTime();
@@ -401,6 +430,19 @@ $('#wealth-body').addEventListener('click', async e => {
   if (w === 'add-decision') return decisionDialog(null);
   const acc = e.target.closest('[data-account]');
   if (acc) return accountDialog(await db.get('accounts', acc.dataset.account));
+  const settle = e.target.closest('[data-settle]');
+  if (settle) {
+    const ids = settle.dataset.settle === 'all'
+      ? (await db.allRecords()).filter(r => r.reimbursable && !r.reimbursed).map(r => r.id)
+      : [settle.dataset.settle];
+    if (settle.dataset.settle === 'all' && !confirm(`把 ${ids.length} 笔都标成已报销？`)) return;
+    for (const id of ids) {
+      const r = await db.getRecord(id);
+      if (r) await db.putRecord({ ...r, reimbursed: true, updatedAt: Date.now() });
+    }
+    toast(`已标记 ${ids.length} 笔为已报销`);
+    dataChanged();
+  }
   const dec = e.target.closest('[data-decision]');
   if (dec) return decisionDialog(await db.get('decisions', dec.dataset.decision));
 });
@@ -411,16 +453,17 @@ async function accountDialog(acc) {
     <div class="field">
       <label>名称</label><input class="input" name="name" value="${esc(acc?.name || '')}" placeholder="例如：招行卡、支付宝、沪深300基金、房贷">
       <label>类型</label><select class="input" name="type">${ACCOUNT_TYPES.map(t => `<option value="${t.id}"${acc?.type === t.id ? ' selected' : ''}>${t.icon} ${t.name}</option>`).join('')}</select>
-      <label>当前${acc && accountType(acc.type).liability ? '欠款' : '余额/市值'}（元）</label>
+      <label>币种</label><select class="input" name="currency">${CURRENCIES.map(c => `<option value="${c.id}"${(acc?.currency || getDefaultCurrency()) === c.id ? ' selected' : ''}>${c.symbol} ${c.name}</option>`).join('')}</select>
+      <label>当前${acc && accountType(acc.type).liability ? '欠款' : '余额/市值'}</label>
       <input class="input" name="value" type="number" inputmode="decimal" placeholder="${balances[0] ? balances[0].value : '0'}">
       <small class="muted">填了就新增一条今天的记录；空着不改。</small>
     </div>
-    ${balances.length ? `<div class="field"><label>历史</label>${balances.slice(0, 12).map(b => `<div class="act-row"><span class="grow">${dayLabel(b.time)}</span><b>${fmtMoney(b.value)}</b></div>`).join('')}</div>` : ''}
+    ${balances.length ? `<div class="field"><label>历史</label>${balances.slice(0, 12).map(b => `<div class="act-row"><span class="grow">${dayLabel(b.time)}</span><b>${fmtMoney(b.value, acc.currency || 'CNY')}</b></div>`).join('')}</div>` : ''}
     ${acc ? '<button class="btn danger full" data-archive>不再统计这个账户</button>' : ''}
   `, async el => {
     const name = el.querySelector('[name=name]').value.trim();
     if (!name) throw new Error('写个名称');
-    const a = { ...(acc || { id: uid(), createdAt: Date.now() }), name, type: el.querySelector('[name=type]').value };
+    const a = { ...(acc || { id: uid(), createdAt: Date.now() }), name, type: el.querySelector('[name=type]').value, currency: el.querySelector('[name=currency]').value };
     await db.put('accounts', a);
     const v = el.querySelector('[name=value]').value.trim();
     if (v !== '') await db.put('balances', { id: uid(), accountId: a.id, value: Number(v), time: Date.now() });

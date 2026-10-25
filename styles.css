@@ -355,3 +355,119 @@ details summary { cursor: pointer; padding: 6px 0; }
 .toast-action { background: none; border: 0; color: #7ee2bf; font-weight: 600; margin-left: 8px; cursor: pointer; padding: 0; }
 .card-head > span:first-child { flex: none; margin-right: 10px; }
 .card-head > span:last-child { text-align: right; }
+
+/* ---------- 多币种 / 报销 ---------- */
+.money-row .input.currency { flex: none; width: auto; padding: 8px; }
+.seg.reimb { margin-top: 10px; }
+.badge { display: inline-block; font-size: 11px; line-height: 1.5; padding: 0 6px; border-radius: 6px; background: #fdf0d5; color: #9a6400; }
+.badge.done { background: var(--chip); color: var(--muted); }
+.rec-amount.reimb { color: #b7791f; }
+.cur-switch { text-align: center; margin-top: 10px; }
+.cur-switch .chip { background: var(--brand-soft); color: var(--brand); }
+.input.rate { width: 110px; }
+@media (prefers-color-scheme: dark) {
+  .badge { background: #3d2f12; color: #f0c56c; }
+  .rec-amount.reimb { color: #f0c56c; }
+}
+
+/* ================= 折叠屏适配（Galaxy Z Fold 等） ================= */
+
+/* 外屏：很窄（约 345–412px） */
+@media (max-width: 400px) {
+  main { padding: 0 10px; }
+  .topbar { padding-inline: 12px; }
+  .topbar h1 { font-size: 20px; }
+  .card { padding: 12px; margin: 10px 0; }
+  .hero { padding: 16px 12px 12px; }
+  .mic.big { width: 100px; height: 100px; font-size: 42px; }
+  .quick-row { gap: 8px; }
+  .quick-row .btn { padding: 10px 6px; font-size: 14px; }
+  .ask-row .btn { padding: 10px 12px; }
+  .kpis { gap: 8px; }
+  .kpi { padding: 10px 12px; }
+  .kpi b { font-size: 17px; }
+  .big-number { font-size: 30px; }
+  .bar-row { grid-template-columns: 62px minmax(0, 1fr) auto; gap: 8px; font-size: 13px; }
+  .diag-row { flex-wrap: wrap; }
+  .diag-row .seg { width: 100%; }
+  .diag-row .seg button { flex: 1; }
+  .grid3 { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); }
+  .grid3 label:last-child { grid-column: 1 / -1; }
+  .fv { grid-template-columns: minmax(0, 1fr); }
+  .fv .kpi { display: flex; align-items: baseline; gap: 10px; }
+  .fv .kpi b { margin-left: auto; }
+  .month-label { width: 64px; font-size: 13px; }
+  .tabbar button { font-size: 11px; }
+  .chip { padding: 5px 10px; font-size: 13px; }
+  .banner { margin-inline: 10px; flex-wrap: wrap; }
+}
+
+/* 内屏展开（约 700–900px，接近正方形）、平板、电脑：两栏 */
+@media (min-width: 640px) {
+  main { max-width: 1100px; padding: 0 24px; }
+  .topbar { padding-inline: max(24px, calc((100% - 1100px) / 2 + 24px)); }
+  .banner { max-width: 1052px; }
+  #view-home.active {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+    column-gap: 20px;
+    align-items: start;
+  }
+  #view-home > :not(.today) { grid-column: 1; }
+  #view-home > .today { grid-column: 2; grid-row: 1 / span 4; }
+  #view-home > .quick-row { margin-bottom: 12px; }
+  /* 卡片按两列瀑布流排列 */
+  #review-body, #time-body, #wealth-body, #view-settings.active { columns: 2; column-gap: 20px; }
+  #review-body > *, #time-body > *, #wealth-body > *, #view-settings > * { break-inside: avoid; }
+  #review-body > :first-child, #time-body > :first-child, #wealth-body > :first-child, #view-settings > :first-child { margin-top: 12px; }
+  .tabbar { justify-content: center; }
+  .tabbar button { flex: 0 1 150px; }
+  /* 记录编辑：更宽，字段两列 */
+  .sheet-panel { max-width: 760px; }
+  #sheet .sheet-body { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); column-gap: 12px; align-content: start; }
+  #sheet .sheet-body > .field:first-child, #sheet .sheet-body > #btn-delete { grid-column: 1 / -1; }
+}
+
+/* 横屏宽屏（电脑、平板横放）回顾和设置用三列 */
+@media (min-width: 1200px) {
+  #review-body, #view-settings.active { columns: 3; }
+}
+
+/* 半折叠·书本姿势（铰链竖着，左右两块屏）：两列正好落在铰链两边 */
+@media (horizontal-viewport-segments: 2) {
+  :root {
+    --hinge: calc(env(viewport-segment-left 1 0, 0px) - env(viewport-segment-right 0 0, 0px));
+    --seg-w: env(viewport-segment-width 0 0, 50vw);
+  }
+  main, .topbar { max-width: none; padding-inline: 16px; }
+  #view-home.active { column-gap: calc(var(--hinge) + 32px); }
+  #review-body, #time-body, #wealth-body, #view-settings.active { columns: 2; column-gap: calc(var(--hinge) + 32px); }
+  .tabbar { justify-content: space-around; }
+  /* 编辑弹层放在右半屏，不压在铰链上 */
+  .sheet { justify-content: flex-end; align-items: stretch; }
+  .sheet-panel { width: env(viewport-segment-width 1 0, 50vw); max-width: none; height: 100%; max-height: 100%; border-radius: 0; }
+  #sheet .sheet-body { display: block; }
+}
+
+/* 半折叠·笔记本姿势（铰链横着，上下两块屏）：首页上半屏看今天，下半屏放话筒 */
+@media (vertical-viewport-segments: 2) {
+  body:has(#view-home.active) { height: 100dvh; overflow: hidden; padding-bottom: 0; }
+  body:has(#view-home.active) main {
+    max-width: none;
+    height: calc(env(viewport-segment-bottom 0 0, 50vh) - 56px - env(safe-area-inset-top));
+    overflow-y: auto;
+  }
+  #view-home.active { display: block; }
+  #view-home .hero {
+    position: fixed; z-index: 4; margin: 0;
+    left: 16px; right: 16px;
+    top: calc(env(viewport-segment-top 0 1, 50vh) + 12px);
+    bottom: calc(var(--tabbar-h) + env(safe-area-inset-bottom) + 12px);
+    display: flex; flex-direction: column; align-items: center; justify-content: center;
+    overflow: hidden;
+  }
+  #view-home .hero .examples > :not(.cur-switch) { display: none; }
+  #view-home .hero .ask-row { width: min(560px, 100%); }
+  .mic.big { width: 88px; height: 88px; font-size: 38px; }
+  .sheet-panel { height: 100%; max-height: 100%; border-radius: 0; }
+}

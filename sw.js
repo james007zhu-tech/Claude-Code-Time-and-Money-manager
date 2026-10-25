@@ -1,5 +1,5 @@
 // 离线缓存 + 点击通知回到应用
-const CACHE = 'time-ledger-v2';
+const CACHE = 'time-ledger-v3';
 const ASSETS = [
   './', 'index.html', 'styles.css', 'app.js', 'db.js', 'parser.js', 'voice.js',
   'ui.js', 'sheet.js', 'views.js', 'settings.js', 'analytics.js', 'ai.js',

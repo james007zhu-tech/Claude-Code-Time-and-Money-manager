@@ -1,9 +1,9 @@
 import * as db from './db.js';
-import { parseUtterance, parseDuration, timeCatById, guessTimeCat } from './parser.js';
+import { parseUtterance, parseDuration, timeCatById, guessTimeCat, getDefaultCurrency, CURRENCIES, currencyById } from './parser.js';
 import { VoiceCapture, speechSupported } from './voice.js';
 import { aiParse } from './ai.js';
-import { fmtMin, fmtMoney, guessAccountType, summarizeTime, summarizeMoney, compileRules } from './analytics.js';
-import { $, $$, esc, uid, store, settings, aiConfig, toast, fmtClock, resetPool } from './ui.js';
+import { fmtMin, fmtMoney, fmtRecMoney, toBase, guessAccountType, summarizeTime, summarizeMoney, compileRules } from './analytics.js';
+import { $, $$, esc, uid, store, settings, saveSettings, aiConfig, toast, fmtClock, resetPool } from './ui.js';
 import { openSheet, saveRecord, recItem, sheetOpen, dataChanged } from './sheet.js';
 import { renderReview, renderTime, renderWealth, answerQuestion } from './views.js';
 import { renderSettings, autoSync } from './settings.js';
@@ -26,18 +26,28 @@ $$('.tabbar button').forEach(b => b.addEventListener('click', () => showView(b.d
 document.addEventListener('data-changed', () => refresh());
 
 // ---------- 首页：说一句 ----------
-const EXAMPLES = ['开始写季度方案，预计两小时', '做完了，打车花了28', '下午2点到4点和客户开会', '午饭35块', '刷了一个小时抖音', '工资到账1万5', '招行卡余额5万3', '这几天我干什么去了？'];
+const EXAMPLES = ['开始写季度方案，预计两小时', '做完了，打车花了28', '和客户吃饭1200泰铢，要报销', '酒店120美元', '下午2点到4点和客户开会', '刷了一个小时抖音', '工资到账1万5', '报销款到账3000', '招行卡余额5万3', '这几天我干什么去了？'];
 let heroVoice = null;
 
 function renderExamples() {
   const recent = store.get('recentActivities', []);
+  const cur = currencyById(getDefaultCurrency());
   $('#hero-examples').innerHTML =
+    `<div class="cur-switch"><button class="chip" data-cycle-currency title="换一种默认币种">说「块」= ${cur.symbol} ${cur.name} ⇄</button></div>` +
     (recent.length && !getActivity() ? `<div class="chips">${recent.slice(0, 4).map(n => `<button class="chip" data-quick-start="${esc(n)}">▶ ${esc(n)}</button>`).join('')}</div>` : '') +
     `<p class="hint">可以这样说：${EXAMPLES.map(e => `「${e}」`).join(' ')}</p>`;
 }
 $('#hero-examples').addEventListener('click', e => {
   const b = e.target.closest('[data-quick-start]');
   if (b) startActivity(b.dataset.quickStart, guessTimeCat(b.dataset.quickStart), 0);
+  if (e.target.closest('[data-cycle-currency]')) {
+    // 人到了哪个国家就切到哪种货币；「元/人民币」「泰铢」「美元」这类明确说法不受影响
+    const i = CURRENCIES.findIndex(c => c.id === settings.defaultCurrency);
+    settings.defaultCurrency = CURRENCIES[(i + 1) % CURRENCIES.length].id;
+    saveSettings();
+    renderExamples();
+    toast(`现在说「块」或只说数字，按${currencyById(settings.defaultCurrency).name}记`);
+  }
 });
 
 function heroState(state, text) {
@@ -128,36 +138,63 @@ async function handleCommand(text, { audio = null } = {}) {
   if (followId && intent.amount != null && !intent.durationMin) {
     const rec = await db.getRecord(followId);
     if (rec) {
-      rec.amount = intent.amount;
-      rec.direction = intent.direction;
-      rec.category = intent.category;
+      Object.assign(rec, moneyFields(intent));
       rec.note = [rec.note, intent.note].filter(Boolean).join('，');
       if (audio) rec.audio = audio;
       await saveRecord(rec);
       followUp = null;
-      toast(`「${rec.activity}」花了 ${fmtMoney(rec.amount)}`, { label: '加凭证', run: () => openSheet(rec, { pickPhoto: true }) });
+      toast(`「${rec.activity}」花了 ${fmtRecMoney(rec)}${rec.reimbursable ? '（待报销）' : ''}`, { label: '加凭证', run: () => openSheet(rec, { pickPhoto: true }) });
       return;
     }
   }
   const rec = await saveRecord({
-    activity: intent.title, note: intent.note || text, amount: intent.amount, direction: intent.direction,
-    category: intent.category, timeCat: intent.timeCat, time: intent.start ?? Date.now(), durationMin: intent.durationMin, ...extras,
+    activity: intent.title, note: intent.note || text, ...moneyFields(intent),
+    timeCat: intent.timeCat, time: intent.start ?? Date.now(), durationMin: intent.durationMin, ...extras,
   });
-  const what = [rec.durationMin ? fmtMin(rec.durationMin) : '', rec.amount != null ? (rec.direction === 'in' ? '+' : '') + fmtMoney(rec.amount) : ''].filter(Boolean).join(' · ');
+  const what = [
+    rec.durationMin ? fmtMin(rec.durationMin) : '',
+    rec.amount != null ? (rec.direction === 'in' ? '+' : '') + fmtRecMoney(rec) : '',
+    rec.reimbursable ? '待报销' : '',
+  ].filter(Boolean).join(' · ');
+  // 报销款到账：顺手把待报销的记录标成已报销
+  if (rec.direction === 'in' && rec.category === 'refund') {
+    toast(`已记：报销款 ${fmtRecMoney(rec)}`, { label: '核销待报销', run: () => settleReimbursements(rec) });
+    return;
+  }
   toast(`已记：${rec.activity || rec.note}${what ? ' · ' + what : ''}`, { label: '修改', run: () => openSheet(rec) });
 }
 
-async function saveBalance({ account, value, liability }) {
+const moneyFields = i => ({
+  amount: i.amount ?? null, currency: i.currency, direction: i.direction, category: i.category, reimbursable: !!i.reimbursable,
+});
+
+// 按时间从早到晚，把金额加起来不超过这笔报销款的待报销记录标成已报销
+async function settleReimbursements(refund) {
+  const budget = toBase(refund.amount, refund.currency) * 1.01;
+  const pending = (await db.allRecords()).filter(r => r.reimbursable && !r.reimbursed && r.amount != null).sort((a, b) => a.time - b.time);
+  let used = 0, n = 0;
+  for (const r of pending) {
+    const v = toBase(r.amount, r.currency);
+    if (used + v > budget) break;
+    used += v;
+    await db.putRecord({ ...r, reimbursed: true, updatedAt: Date.now() });
+    n++;
+  }
+  dataChanged();
+  toast(n ? `已把 ${n} 笔标成已报销（${fmtMoney(used)}）` : '没有能对上的待报销记录，可以在记录里手动改');
+}
+
+async function saveBalance({ account, value, currency, liability }) {
   const accounts = await db.all('accounts');
   let acc = accounts.find(a => a.name === account) || accounts.find(a => !a.archived && (a.name.includes(account) || account.includes(a.name)));
   if (!acc) {
-    acc = { id: uid(), name: account, type: guessAccountType(account, liability), createdAt: Date.now() };
+    acc = { id: uid(), name: account, type: guessAccountType(account, liability), currency: currency || getDefaultCurrency(), createdAt: Date.now() };
     await db.put('accounts', acc);
   }
   const b = { id: uid(), accountId: acc.id, value, time: Date.now() };
   await db.put('balances', b);
   dataChanged();
-  toast(`${acc.name}：${fmtMoney(value)}`, { label: '撤销', run: async () => { await db.del('balances', b.id); dataChanged(); } });
+  toast(`${acc.name}：${fmtMoney(value, acc.currency || 'CNY')}`, { label: '撤销', run: async () => { await db.del('balances', b.id); dataChanged(); } });
 }
 
 // ---------- 正在做的事 ----------
@@ -181,7 +218,7 @@ async function finishActivity(entry, extras = {}, { silent = false } = {}) {
   const act = getActivity();
   if (!act) {
     if (entry) {
-      const rec = await saveRecord({ activity: entry.title, note: entry.note, amount: entry.amount, direction: entry.direction, category: entry.category, timeCat: entry.timeCat, ...extras });
+      const rec = await saveRecord({ activity: entry.title, note: entry.note, ...moneyFields(entry), timeCat: entry.timeCat, ...extras });
       toast('已记录', { label: '修改', run: () => openSheet(rec) });
     } else if (!silent) {
       toast('现在没有在计时的事。可以说「开始…」');
@@ -193,11 +230,11 @@ async function finishActivity(entry, extras = {}, { silent = false } = {}) {
   const rec = await saveRecord({
     activity: act.name, timeCat: act.timeCat, time: act.start, durationMin, source: 'timer',
     note: entry?.note && entry.note !== act.name ? entry.note : '',
-    amount: entry?.amount ?? null, direction: entry?.direction, category: entry?.category, audio: extras.audio,
+    ...(entry ? moneyFields(entry) : {}), audio: extras.audio,
   });
   if (silent) return;
   if (rec.amount != null) {
-    toast(`「${act.name}」${fmtMin(durationMin)} · ${fmtMoney(rec.amount)}`, { label: '加凭证', run: () => openSheet(rec, { pickPhoto: true }) });
+    toast(`「${act.name}」${fmtMin(durationMin)} · ${fmtRecMoney(rec)}${rec.reimbursable ? '（待报销）' : ''}`, { label: '加凭证', run: () => openSheet(rec, { pickPhoto: true }) });
   } else {
     followUp = { id: rec.id, name: act.name, durationMin };
   }
@@ -260,6 +297,7 @@ async function renderHome() {
   if (t.device.total) parts.push(`💻 ${fmtMin(t.device.total)}`);
   parts.push(`支出 <b>${fmtMoney(m.out)}</b>`);
   if (m.in) parts.push(`收入 <b>${fmtMoney(m.in)}</b>`);
+  if (m.reimbPending) parts.push(`待报销 <b>${fmtMoney(m.reimbPending)}</b>`);
   $('#today-summary').innerHTML = parts.join(' · ');
   resetPool('today');
   $('#today-list').innerHTML = recs.length

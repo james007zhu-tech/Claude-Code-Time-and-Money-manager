@@ -1,8 +1,8 @@
 // 记录编辑弹层 + 通用弹层 + 记录列表项
 import * as db from './db.js';
-import { CATEGORIES, INCOME_CATEGORIES, TIME_CATS, catById, timeCatById, parseEntry } from './parser.js';
+import { CATEGORIES, INCOME_CATEGORIES, TIME_CATS, CURRENCIES, catById, timeCatById, parseEntry, getDefaultCurrency } from './parser.js';
 import { VoiceCapture, speechSupported } from './voice.js';
-import { fmtMin, fmtMoney } from './analytics.js';
+import { fmtMin, fmtRecMoney } from './analytics.js';
 import { $, $$, esc, uid, store, settings, toast, blobUrl, resetPool, toLocalInput, fmtTime } from './ui.js';
 
 export const dataChanged = () => document.dispatchEvent(new Event('data-changed'));
@@ -16,6 +16,7 @@ export function recItem(r, pool) {
   if (r.durationMin) meta.push('⏱ ' + fmtMin(r.durationMin));
   if (r.timeCat) meta.push(timeCatById(r.timeCat).short);
   if (r.amount != null) meta.push(c.name);
+  if (r.reimbursable) meta.push(r.reimbursed ? '<span class="badge done">已报销</span>' : '<span class="badge">待报销</span>');
   if (r.audio) meta.push('🔊');
   if (r.photos?.length > 1) meta.push(`📎${r.photos.length}`);
   const title = r.activity || r.note || c.name;
@@ -23,7 +24,7 @@ export function recItem(r, pool) {
   return `<li class="rec" data-id="${r.id}">
     <div class="rec-icon">${icon}</div>
     <div class="rec-main"><div class="rec-title">${esc(title)}</div>${sub}<div class="rec-meta">${meta.join(' · ')}</div></div>
-    <div class="rec-amount${isIn ? ' income' : ''}">${r.amount != null ? (isIn ? '+' : '-') + fmtMoney(r.amount) : ''}</div>
+    <div class="rec-amount${isIn ? ' income' : ''}${r.reimbursable ? ' reimb' : ''}">${r.amount != null ? (isIn ? '+' : '-') + fmtRecMoney(r) : ''}</div>
   </li>`;
 }
 
@@ -47,6 +48,22 @@ function renderCatChips() {
   $('#f-cats').innerHTML = list.map(c => `<button class="chip${c.id === draft.category ? ' active' : ''}" data-cat="${c.id}">${c.icon} ${c.name}</button>`).join('');
   $$('#f-direction button').forEach(b => b.classList.toggle('active', b.dataset.dir === draft.direction));
 }
+$('#f-currency').innerHTML = CURRENCIES.map(c => `<option value="${c.id}">${c.symbol} ${c.name}</option>`).join('');
+function renderReimb() {
+  const state = !draft.reimbursable ? 'no' : draft.reimbursed ? 'done' : 'pending';
+  $$('#f-reimb button').forEach(b => b.classList.toggle('active', b.dataset.reimb === state));
+  $('#f-reimb').hidden = draft.direction === 'in';
+}
+$('#f-reimb').addEventListener('click', e => {
+  const b = e.target.closest('[data-reimb]');
+  if (!b) return;
+  draft.reimbursable = b.dataset.reimb !== 'no';
+  draft.reimbursed = b.dataset.reimb === 'done';
+  draft.reimbTouched = true;
+  renderReimb();
+});
+$('#f-currency').addEventListener('change', () => { if (draft) draft.curTouched = true; });
+
 function renderTimeCats() {
   $('#f-timecats').innerHTML = TIME_CATS.map(c => `<button class="chip${c.id === draft.timeCat ? ' active' : ''}" data-tcat="${c.id}">${c.icon} ${c.short}</button>`).join('');
 }
@@ -63,6 +80,10 @@ export function openSheet(rec = null, preset = {}) {
     category: src.category ?? null,
     timeCat: src.timeCat ?? null,
     source: rec?.source || preset.source || 'manual',
+    reimbursable: !!src.reimbursable,
+    reimbursed: !!src.reimbursed,
+    reimbTouched: !!rec,
+    curTouched: !!rec,
     amountTouched: !!rec,
     catTouched: !!rec,
     tcatTouched: !!rec,
@@ -72,12 +93,14 @@ export function openSheet(rec = null, preset = {}) {
   actEl.value = (rec ? rec.activity : preset.activity ?? preset.title) || '';
   noteEl.value = src.note || '';
   amountEl.value = src.amount ?? '';
+  $('#f-currency').value = src.currency || getDefaultCurrency();
   timeEl.value = toLocalInput(src.time ?? src.start ?? Date.now());
   durEl.value = src.durationMin ?? '';
   $('#amount-auto').hidden = true;
   $('#btn-delete').hidden = !rec;
   $('#live-text').hidden = true;
   renderCatChips();
+  renderReimb();
   renderTimeCats();
   renderPhotos();
   renderAudio();
@@ -205,11 +228,14 @@ function autoParse() {
     amountEl.value = p.amount;
     $('#amount-auto').hidden = false;
     draft.direction = p.direction;
+    if (!draft.curTouched && p.currency) $('#f-currency').value = p.currency;
   }
+  if (!draft.reimbTouched && p.reimbursable) { draft.reimbursable = true; draft.reimbursed = false; }
   if (!draft.catTouched && p.category) draft.category = p.category;
   if (!draft.tcatTouched && p.timeCat) draft.timeCat = p.timeCat;
   if (!draft.durTouched && p.durationMin) durEl.value = p.durationMin;
   renderCatChips();
+  renderReimb();
   renderTimeCats();
 }
 
@@ -224,6 +250,7 @@ $('#f-direction').addEventListener('click', e => {
   draft.category = null;
   draft.catTouched = true;
   renderCatChips();
+  renderReimb();
 });
 $('#f-cats').addEventListener('click', e => {
   const chip = e.target.closest('[data-cat]');
@@ -261,6 +288,10 @@ export async function saveRecord(fields) {
     activity: fields.activity || '',
     note: fields.note || '',
     amount: fields.amount ?? null,
+    currency: fields.amount != null ? fields.currency || getDefaultCurrency() : null,
+    // 要报销的支出：reimbursed 表示公司已经把钱报给你了
+    reimbursable: fields.amount != null && fields.direction !== 'in' && !!fields.reimbursable,
+    reimbursed: fields.amount != null && fields.direction !== 'in' && !!fields.reimbursable && !!fields.reimbursed,
     direction: fields.amount != null ? fields.direction || 'out' : 'out',
     category: fields.amount != null ? fields.category || (fields.direction === 'in' ? 'other_income' : 'other') : null,
     timeCat: fields.timeCat || null,
@@ -284,13 +315,13 @@ $('#sheet-save').addEventListener('click', async () => {
   if (amount != null && (!Number.isFinite(amount) || amount < 0)) { toast('金额填得不对'); return; }
   const dur = durEl.value.trim() === '' ? null : Math.round(Number(durEl.value));
   if (dur != null && (!Number.isFinite(dur) || dur < 0)) { toast('时长填得不对'); return; }
-  const fields = { ...draft, activity: actEl.value.trim(), note: noteEl.value.trim(), amount, durationMin: dur, time: new Date(timeEl.value).getTime() || Date.now() };
+  const fields = { ...draft, activity: actEl.value.trim(), note: noteEl.value.trim(), amount, currency: $('#f-currency').value, durationMin: dur, time: new Date(timeEl.value).getTime() || Date.now() };
   if (amount == null && !fields.note && !fields.activity && !draft.photos.length && !draft.audio && !dur) {
     toast('至少写点内容：做了什么、用时、金额或凭证');
     return;
   }
   const rec = await saveRecord(fields);
-  toast(rec.amount != null ? `已记 ${rec.direction === 'in' ? '+' : ''}${fmtMoney(rec.amount)}` : '已记录');
+  toast(rec.amount != null ? `已记 ${rec.direction === 'in' ? '+' : ''}${fmtRecMoney(rec)}${rec.reimbursable && !rec.reimbursed ? '（待报销）' : ''}` : '已记录');
   closeSheet();
 });
 

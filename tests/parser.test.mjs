@@ -111,3 +111,50 @@ test('整句意图', () => {
   r = parseUtterance('午饭35块', NOW);
   assert.equal(r.amount, 35); assert.equal(r.durationMin, null); assert.equal(r.direction, 'out');
 });
+
+import { parseMoney, parseReimburse, setDefaultCurrency } from '../parser.js';
+
+test('多币种', () => {
+  setDefaultCurrency('CNY');
+  const cases = {
+    '午饭35块': [35, 'CNY'],
+    '咖啡128元': [128, 'CNY'],
+    '按摩花了500泰铢': [500, 'THB'],
+    '打车三百块泰铢': [300, 'THB'],
+    '酒店120美元': [120, 'USD'],
+    '机票350刀': [350, 'USD'],
+    '订阅 $20': [20, 'USD'],
+    '夜市 ฿250': [250, 'THB'],
+    '花了300泰铢，折合人民币60': [300, 'THB'],
+  };
+  for (const [s, [a, c]] of Object.entries(cases)) assert.deepEqual(parseMoney(s), { amount: a, currency: c }, s);
+  // 人在泰国时把默认币种设成泰铢，「块」就是泰铢，「元」仍然是人民币
+  setDefaultCurrency('THB');
+  assert.deepEqual(parseMoney('午饭80块'), { amount: 80, currency: 'THB' });
+  assert.deepEqual(parseMoney('花了200'), { amount: 200, currency: 'THB' });
+  assert.deepEqual(parseMoney('淘宝买书58元'), { amount: 58, currency: 'CNY' });
+  const b = parseUtterance('开泰银行余额5万泰铢', NOW);
+  assert.equal(b.type, 'balance'); assert.equal(b.currency, 'THB'); assert.equal(b.value, 50000);
+  setDefaultCurrency('CNY');
+});
+
+test('报销', () => {
+  assert.equal(parseReimburse('和客户吃饭花了800，要报销'), true);
+  assert.equal(parseReimburse('打车60块公司出'), true);
+  assert.equal(parseReimburse('这个不报销'), false);
+  assert.equal(parseReimburse('午饭35'), null);
+  let r = parseUtterance('和客户吃饭花了1200泰铢，这笔要报销', NOW);
+  assert.equal(r.reimbursable, true); assert.equal(r.currency, 'THB'); assert.equal(r.amount, 1200); assert.equal(r.category, 'food');
+  assert.equal(r.title, '和客户吃饭');
+  r = parseUtterance('出差打车45美元可以报销', NOW);
+  assert.equal(r.reimbursable, true); assert.equal(r.currency, 'USD'); assert.equal(r.category, 'transport');
+  r = parseUtterance('报销款到账3000', NOW);
+  assert.equal(r.direction, 'in'); assert.equal(r.reimbursable, false); assert.equal(r.category, 'refund');
+  assert.equal(r.title, '报销款');
+  r = parseUtterance('打车60块公司出', NOW);
+  assert.equal(r.reimbursable, true); assert.equal(r.title, '打车');
+  r = parseUtterance('酒店120美元，要报销', NOW);
+  assert.equal(r.category, 'travel'); assert.equal(r.title, '酒店');
+  r = parseUtterance('午饭35块', NOW);
+  assert.equal(r.reimbursable, false);
+});

@@ -46,7 +46,7 @@
         <button id="btn-new" class="btn">✍️ 手动记</button>
       </div>
 
-      <div class="card">
+      <div class="card today">
         <div class="card-head"><span>今天</span><span id="today-summary"></span></div>
         <ul id="today-list" class="rec-list"></ul>
       </div>
@@ -94,6 +94,22 @@
           <textarea id="s-rules" class="input mono" rows="7"></textarea>
           <button id="s-rules-reset" class="btn small ghost">恢复默认</button>
         </details>
+      </div>
+
+      <div class="card">
+        <h3>币种与汇率</h3>
+        <div class="setting-row">
+          <span>说「块」或只说数字时按</span>
+          <select id="s-default-cur" class="input inline"></select>
+        </div>
+        <div class="setting-row">
+          <span>统计折算成</span>
+          <select id="s-base-cur" class="input inline"></select>
+        </div>
+        <div class="setting-row"><span>1 泰铢 = 人民币</span><input id="s-rate-THB" class="input inline rate" type="number" inputmode="decimal" step="0.001"></div>
+        <div class="setting-row"><span>1 美元 = 人民币</span><input id="s-rate-USD" class="input inline rate" type="number" inputmode="decimal" step="0.01"></div>
+        <button id="s-rates-update" class="btn small">联网更新汇率</button>
+        <p class="hint" id="s-rates-state">明确说「元/人民币」「泰铢/铢」「美元/美金/刀」的会按说的币种记；首页的「说『块』=」按钮可以随时切换。</p>
       </div>
 
       <div class="card">
@@ -199,6 +215,10 @@
               <button data-dir="out" class="active">支出</button><button data-dir="in">收入</button>
             </div>
             <input id="f-amount" class="input amount" type="number" inputmode="decimal" step="0.01" min="0" placeholder="0">
+            <select id="f-currency" class="input inline currency"></select>
+          </div>
+          <div id="f-reimb" class="seg reimb">
+            <button data-reimb="no" class="active">不报销</button><button data-reimb="pending">要报销</button><button data-reimb="done">已报销</button>
           </div>
           <div id="f-cats" class="chips"></div>
         </div>
