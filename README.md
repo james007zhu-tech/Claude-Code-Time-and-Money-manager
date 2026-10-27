@@ -127,8 +127,7 @@ API Key 只保存在本机浏览器里，按用量付费。提问时会把相关
 
 ## 网址
 
-部署在 **https://finance.zhu.com.ai**（GitHub Pages，自定义域名写在仓库根目录的 `CNAME` 文件里）。
-需要在 zhu.com.ai 的域名解析里加一条记录：`finance` → `CNAME` → `james007zhu-tech.github.io`。
+通过 Cloudflare 通道发布在 **https://finance.zhu.com.ai**：在自己的电脑或服务器上运行，步骤见 [deploy/README.md](deploy/README.md)。
 
 ## 安装到手机
 
