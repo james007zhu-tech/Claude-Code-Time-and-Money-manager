@@ -37,12 +37,33 @@ async function ask(cfg, { system, user, effort, schema, maxTokens = 16000 }) {
 }
 
 const nullable = type => ({ type: [type, 'null'] });
+// 一笔记录：做了什么 / 用了多久 / 花了或收到多少
+const ITEM_SCHEMA = {
+  type: 'object',
+  additionalProperties: false,
+  required: ['title', 'note', 'amount', 'currency', 'currencySaid', 'reimbursable', 'direction', 'category', 'timeCat', 'start', 'durationMin', 'account'],
+  properties: {
+    title: { type: 'string', description: '简短的事项名，如「午饭」「和客户吃饭」「打车回家」，不要带金额' },
+    note: { type: 'string', description: '这一笔的补充说明（和谁、在哪、为什么），没有就留空字符串；不要整句照抄用户的话' },
+    amount: nullable('number'),
+    currency: { ...nullable('string'), enum: CURRENCIES.map(c => c.id).concat([null]) },
+    currencySaid: { type: 'boolean', description: '用户是否明确说了这一笔的币种' },
+    reimbursable: { type: 'boolean', description: '这一笔是否要找公司报销' },
+    direction: { type: 'string', enum: ['out', 'in'] },
+    category: { ...nullable('string'), enum: [...CATEGORIES, ...INCOME_CATEGORIES].map(c => c.id).concat([null]) },
+    timeCat: { ...nullable('string'), enum: TIME_CATS.map(c => c.id).concat([null]) },
+    start: { ...nullable('string'), description: '发生时间，本地时间 YYYY-MM-DDTHH:mm；只说了「午饭」「晚上」就按常理估一个时间；完全没线索为 null' },
+    durationMin: nullable('number'),
+    account: { ...nullable('string'), description: '这一笔的付款或收款账户（用户提到才填，尽量用已有账户的名字）' },
+  },
+};
 const PARSE_SCHEMA = {
   type: 'object',
   additionalProperties: false,
-  required: ['type', 'title', 'note', 'amount', 'currency', 'currencySaid', 'reimbursable', 'direction', 'category', 'timeCat', 'start', 'durationMin', 'account', 'toAccount', 'toAmount', 'toCurrency', 'liability', 'rangeStart', 'rangeEnd', 'rangeLabel', 'focus'],
+  required: ['type', 'items', 'title', 'note', 'amount', 'currency', 'currencySaid', 'reimbursable', 'direction', 'category', 'timeCat', 'start', 'durationMin', 'account', 'toAccount', 'toAmount', 'toCurrency', 'liability', 'rangeStart', 'rangeEnd', 'rangeLabel', 'focus'],
   properties: {
     type: { type: 'string', enum: ['entry', 'start', 'finish', 'balance', 'transfer', 'question'] },
+    items: { type: 'array', items: ITEM_SCHEMA, description: 'entry / finish 时：用户这段话里的每一笔，各占一项，按说的顺序；其他类型为空数组' },
     title: { type: 'string', description: '简短的事项名，如「写季度方案」「和客户吃饭」' },
     note: { type: 'string', description: '用户原话整理后的说明' },
     amount: { ...nullable('number'), description: '金额（原币种）；balance 时是余额' },
@@ -72,11 +93,11 @@ const WEEK = '日一二三四五六';
 
 export async function aiParse(cfg, text, ctx = {}) {
   const now = new Date();
-  const system = `你是一个「时间 + 金钱」记账助手，把用户说的一句中文整理成一条结构化记录。
+  const system = `你是一个「时间 + 金钱」记账助手。用户用口语说一段话，你要理解其中的信息并整理成结构化记录，而不是照抄原话。
 类型：
-- entry：记录做了什么、用了多久、花了或收到多少钱（三者可以只有一部分）
+- entry：记录做了什么、用了多久、花了或收到多少钱（三者可以只有一部分）。用户常常一口气说完一天的事，要拆成一笔一笔放进 items：每顿饭、每次打车、每样东西各一项，各有自己的金额、类别、时间、账户和是否报销。「一共多少」是合计，不要单独成项。同一件事的时间和花费（如「下午2点到4点和客户开会，打车来回60块」）可以合成一项。
 - start：开始做一件事（如「开始写方案」「现在去开会」）
-- finish：一件事做完了（如「做完了」「搞定」，后面可能带花费，写进 amount 等字段）
+- finish：一件事做完了（如「做完了」「搞定」）；后面带的花费放进 items，第一项算在这件事上
 - balance：报告某个账户的余额或负债（如「招行卡余额5万3」「房贷还欠80万」）
 - transfer：钱在自己的账户之间移动（如「从支付宝转5000到微信」「从泰铢卡取了2000现金」「人民币卡换了1万到泰铢卡，到账4万8泰铢」）
 - question：在问过去的情况（如「这几天干什么去了」「今年存了多少钱」）
@@ -86,9 +107,9 @@ export async function aiParse(cfg, text, ctx = {}) {
 币种：CNY=人民币（元、人民币、¥），THB=泰铢（泰铢、铢、฿），USD=美元（美元、美金、刀、$）。只说「块」或只说数字时，用默认币种 ${getDefaultCurrency()}（${currencyById(getDefaultCurrency()).name}）。
 用户的账户：${ctx.accounts?.length ? ctx.accounts.join('，') : '（还没建）'}。用户提到用哪个账户付款/收款时填 account（如「微信付的」「用公司卡」「现金」）。
 报销：用户说「要报销」「公司出」「公费」等，reimbursable 为 true；说「报销款到账」是收入（direction=in，category=refund），reimbursable 为 false。
-「5万3」= 53000，「一个半小时」= 90 分钟。没说到的字段填 null（liability、reimbursable 填 false，direction 填 out，focus 填 all，title/note 填原话）。`;
+「5万3」= 53000，「一个半小时」= 90 分钟。没说到的字段填 null（liability、reimbursable 填 false，direction 填 out，focus 填 all）。entry / finish 的内容都放在 items 里，顶层的 title、amount 等字段只给 balance / transfer / start 用。`;
   const user = `现在是 ${localStamp(now)}（星期${WEEK[now.getDay()]}）。${ctx.activity ? `用户正在做：「${ctx.activity}」。` : ''}\n用户说：${text}`;
-  const json = JSON.parse(await ask(cfg, { system, user, effort: 'low', schema: PARSE_SCHEMA, maxTokens: 4000 }));
+  const json = JSON.parse(await ask(cfg, { system, user, effort: 'low', schema: PARSE_SCHEMA, maxTokens: 8000 }));
   return normalize(json, text);
 }
 
@@ -105,13 +126,20 @@ function normalize(j, text) {
   if (j.type === 'transfer' && j.amount != null) {
     return { type: 'transfer', from: j.account || '', to: j.toAccount || '', amount: j.amount, currency: j.currencySaid ? j.currency : null, toAmount: j.toAmount, toCurrency: j.toCurrency, text };
   }
-  const entry = {
-    title: j.title, note: j.note || text, amount: j.amount, direction: j.direction === 'in' ? 'in' : 'out',
-    currency: j.amount == null ? null : currency, currencyExplicit: j.currencySaid, accountHint: j.account, reimbursable: j.amount != null && j.direction !== 'in' && j.reimbursable,
-    category: j.amount == null ? null : j.category, timeCat: j.timeCat, start: ts(j.start), durationMin: j.durationMin,
+  const toEntry = x => {
+    const cur = x.currency || getDefaultCurrency();
+    return {
+      title: x.title, note: x.note || '', amount: x.amount, direction: x.direction === 'in' ? 'in' : 'out',
+      currency: x.amount == null ? null : cur, currencyExplicit: !!x.currencySaid, accountHint: x.account,
+      reimbursable: x.amount != null && x.direction !== 'in' && !!x.reimbursable,
+      category: x.amount == null ? null : x.category, timeCat: x.timeCat, start: ts(x.start), durationMin: x.durationMin,
+    };
   };
-  if (j.type === 'finish') return { type: 'finish', entry: j.amount != null || j.note ? entry : null };
-  return { type: 'entry', ...entry };
+  // 兼容：模型没填 items 时用顶层字段
+  const items = (j.items?.length ? j.items : [j]).map(toEntry);
+  if (j.type === 'finish') return { type: 'finish', entry: j.items?.length || j.amount != null ? items[0] : null, extra: items.slice(1) };
+  if (items.length > 1) return { type: 'entries', items, text };
+  return { type: 'entry', ...items[0], note: items[0].note || text };
 }
 
 export async function aiAnswer(cfg, question, digest) {

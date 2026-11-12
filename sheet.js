@@ -265,7 +265,7 @@ $('#photo-list').addEventListener('click', e => {
 });
 $('#viewer').addEventListener('click', () => { $('#viewer').hidden = true; });
 
-async function compressImage(file, max = 1600, quality = 0.8) {
+export async function compressImage(file, max = 1600, quality = 0.8) {
   let img;
   try {
     img = await createImageBitmap(file, { imageOrientation: 'from-image' });
@@ -287,17 +287,21 @@ async function compressImage(file, max = 1600, quality = 0.8) {
 
 $('#btn-camera').addEventListener('click', () => $('#in-camera').click());
 $('#btn-gallery').addEventListener('click', () => $('#in-gallery').click());
+// 往正在编辑的记录里加凭证（拍照、相册、拖进来、粘贴都走这里）
+export async function addPhotosToSheet(files) {
+  if (!files.length || !draft) return;
+  const first = draft.photos.length;
+  for (const f of files) draft.photos.push(await compressImage(f));
+  renderPhotos();
+  // 还没填金额时自动识别第一张新凭证
+  if (!amountEl.value.trim()) recognizePhoto(draft.photos[first]);
+  else toast(`已添加 ${files.length} 张凭证`);
+}
 for (const input of [$('#in-camera'), $('#in-gallery')]) {
-  input.addEventListener('change', async () => {
+  input.addEventListener('change', () => {
     const files = [...input.files];
     input.value = '';
-    if (!files.length || !draft) return;
-    const first = draft.photos.length;
-    for (const f of files) draft.photos.push(await compressImage(f));
-    renderPhotos();
-    // 还没填金额时自动识别第一张新凭证
-    if (!amountEl.value.trim()) recognizePhoto(draft.photos[first]);
-    else toast(`已添加 ${files.length} 张凭证`);
+    addPhotosToSheet(files);
   });
 }
 $('#btn-audio-del').addEventListener('click', () => { draft.audio = null; renderAudio(); });

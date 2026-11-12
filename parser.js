@@ -130,6 +130,10 @@ function findAmounts(src) {
     take(new RegExp(`(?:花了|花费|付了|付款|支付|消费|一共|总共|共计|合计|总计|掏了|用了|余额|还剩|还有|到账|收到|进账|入账|赚了|市值|欠了|欠|发了|是)\\s*(${NUM})(?![${CN_CHARS}\\d]*\\s*(?:个|点|小时|分钟|天|号|月|年|岁|人|次))`, 'g'),
       /人民币|rmb/i.test(src) ? 'CNY' : /泰铢|泰币|baht/i.test(src) ? 'THB' : /美元|美金|usd/i.test(src) ? 'USD' : null, num);
   }
+  if (!found.length && guessCategory(src)) {
+    // 「打车28」「午饭35」：能看出是哪类消费、句末又是个数字
+    take(/(?<=[\u4e00-\u9fa5])(\d+(?:\.\d+)?)\s*$/g, null, num);
+  }
   if (!found.length) {
     // 「买水果80」「充话费100」：买/付/充/交之后、句末的数字
     take(new RegExp(`(?<=(?:买|付|刷|充|交|给)[^\\d，,。]{0,10})(\\d+(?:\\.\\d+)?)\\s*$`, 'g'), null, num);
@@ -319,7 +323,9 @@ export function parseUtterance(text, now = Date.now()) {
   const finish = /^(我)?(已经|刚)?(做完|干完|弄完|忙完|搞定|结束|完成|完事)(了|啦)?[，,。\s]*/.exec(s);
   if (finish) {
     const rest = s.slice(finish[0].length);
-    return { type: 'finish', entry: rest ? parseEntry(rest, now) : null };
+    const items = rest ? parseEntries(rest, now) : [];
+    // 第一笔算在刚做完的这件事上，其余的各记一条
+    return { type: 'finish', entry: items[0] || null, extra: items.slice(1) };
   }
 
   const start = /^(我)?(现在|马上|准备|开始|要开始|这就)+(去|要)?(开始)?(.{1,30})$/.exec(s);
@@ -343,7 +349,86 @@ export function parseUtterance(text, now = Date.now()) {
     return { type: 'balance', account, value: amount, currency, liability, text: raw };
   }
 
-  return { type: 'entry', ...parseEntry(s, now) };
+  // 一口气说了好几笔：拆开，每笔单独一条
+  const items = parseEntries(s, now);
+  // 「下午2点到4点和客户开会，打车来回60块」：一件事 + 它的花费，仍然记成一条
+  const [a, b] = items;
+  const oneEvent = items.length === 2 && a.amount == null && a.durationMin && b.amount != null && !b.durationMin;
+  if (items.length > 1 && !oneEvent) return { type: 'entries', items, text: raw };
+  if (oneEvent) return { type: 'entry', ...parseEntry(s, now) };
+  return { type: 'entry', ...(items[0] || parseEntry(s, now)) };
+}
+
+// ---------- 一句话里的多笔 ----------
+// 「今天午饭35，晚饭和客户吃了1200泰铢要报销，打车回家用现金付了80，早饭8块午饭25块」
+//   → 午饭 35 / 晚饭 1200 泰铢（待报销）/ 打车 80（现金）/ 早饭 8 / 午饭 25
+const TOTAL_PIECE = /^(?:一共|总共|合计|共计|总计|加起来)/;
+// 只是补充说明上一笔的话：要不要报销、用什么付的
+const MODIFIER_PIECE = /报销|报账|公司出|公司付|公费|自费|付的|支付的|刷的|刷卡|微信|支付宝|现金|卡付|卡刷|这笔|这个是/;
+const DAY_WORD = /大前天|前天|昨天|昨晚|昨日|今天|今晚|今早/;
+// 没说几点时，按餐次或时段给个合理时间（分钟）；餐次优先
+const ROUGH_TIME = [
+  [/早饭|早餐|早点/, 8 * 60], [/午饭|午餐|中饭|中午饭/, 12 * 60 + 30], [/晚饭|晚餐/, 19 * 60], [/夜宵|宵夜/, 22 * 60],
+  [/凌晨/, 2 * 60], [/早上|早晨|今早/, 8 * 60], [/上午/, 10 * 60], [/中午/, 12 * 60 + 30], [/下午/, 15 * 60], [/傍晚/, 18 * 60], [/晚上|今晚|昨晚|夜里/, 20 * 60],
+];
+
+function splitPieces(s) {
+  const clauses = s.replace(/(一共|总共|合计|共计|总计|加起来)/g, '，$1')
+    .split(/[，,。；;！!？?\n]+|(?:然后|还有就是|还有|另外|接着|之后|再就是|以及|最后)/).map(t => t.trim()).filter(Boolean);
+  const pieces = [];
+  for (const c of clauses) {
+    // 一个分句里有多个金额（「早饭8块午饭25块」）：在每个金额后面切开
+    const found = findAmounts(c);
+    if (found.length <= 1) { pieces.push(c); continue; }
+    let from = 0;
+    found.forEach((f, i) => {
+      const end = i === found.length - 1 ? c.length : f.index + f.length;
+      const piece = c.slice(from, end).trim();
+      if (piece) pieces.push(piece);
+      from = end;
+    });
+  }
+  return pieces;
+}
+
+export function parseEntries(text, now = Date.now()) {
+  const s = String(text || '').replace(/(\d),(\d{3})/g, '$1$2').trim();
+  if (!s) return [];
+  const dayWord = DAY_WORD.exec(s)?.[0];
+  const groups = [];     // 每笔的原话片段
+  let lead = '';         // 还没归属的说明，接到下一笔前面
+  for (const p of splitPieces(s)) {
+    if (TOTAL_PIECE.test(p)) continue;            // 「一共 xx」是合计，不单独记
+    const hasMoney = findAmounts(p).length > 0;
+    const hasTime = !!parseDuration(p) || new RegExp(CLOCK).test(p);
+    if (hasMoney || hasTime) {
+      groups.push((lead ? lead + '，' : '') + p);
+      lead = '';
+    } else if (groups.length && MODIFIER_PIECE.test(p) && p.length <= 16) {
+      groups[groups.length - 1] += '，' + p;        // 「这笔要报销」「用公司卡付的」补到上一笔
+    } else {
+      lead = lead ? lead + '，' + p : p;
+    }
+  }
+  if (lead) {
+    if (groups.length) groups[groups.length - 1] += '，' + lead;
+    else groups.push(lead);
+  }
+  return groups.map(g => {
+    const withDay = dayWord && !DAY_WORD.test(g) ? `${dayWord}${g}` : g;
+    const e = parseEntry(withDay, now);
+    e.note = g;
+    if (!new RegExp(CLOCK).test(g)) {
+      const meal = ROUGH_TIME.find(([re]) => re.test(g));
+      if (meal) {
+        const d = new Date(now);
+        d.setDate(d.getDate() + (/大前天/.test(withDay) ? -3 : /前天/.test(withDay) ? -2 : /昨天|昨晚|昨日/.test(withDay) ? -1 : 0));
+        d.setHours(0, meal[1], 0, 0);
+        e.start = d.getTime();
+      }
+    }
+    return e;
+  });
 }
 
 // 账户之间转钱 / 取现 / 换汇：
@@ -401,7 +486,7 @@ function stripForTitle(s) {
   for (const f of findAmounts(t).reverse()) t = t.slice(0, f.index) + t.slice(f.index + f.length);
   t = t.replace(new RegExp(`${CLOCK}\\s*(?:到|至|-|~|—|－)\\s*${CLOCK}`, 'g'), ' ')
     .replace(new RegExp(`(${NUM}|半)\\s*(?:个)?\\s*(半)?\\s*(小时|钟头|分钟)(半)?`, 'g'), ' ')
-    .replace(/(用|拿|通过)[^，,\s]{1,8}?(付|支付|刷|结|转)(的|了|款)?|(微信|支付宝|现金|刷卡)(付了?|支付了?|付的)/g, ' ')
+    .replace(/(用|拿|通过)[^，,\s]{1,8}?(付|支付|刷|结|转)(的|了|款)?|(微信|支付宝|现金|刷卡)(付的|付了|支付的|支付了|支付|付)/g, ' ')
     .replace(/(用|拿|通过)(现金|微信|支付宝|公司卡|[^，,\s]{0,6}?卡)/g, ' ')
     .replace(/(花了|花费|付了|一共|总共|用了|大概|左右|差不多)/g, ' ')
     .replace(/[，,\s]*(这笔|这个|这些)?(要|需要|可以|能|找公司)(报销|报账)(的)?|[，,\s]*(公司出|公司付|公费)/g, ' ');

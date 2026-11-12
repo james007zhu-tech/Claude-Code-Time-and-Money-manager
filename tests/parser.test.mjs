@@ -159,3 +159,32 @@ test('报销', () => {
   r = parseUtterance('午饭35块', NOW);
   assert.equal(r.reimbursable, false);
 });
+
+import { parseEntries } from '../parser.js';
+
+test('一口气说很多笔：拆成一条一条', () => {
+  const N = new Date(2026, 10, 12, 21, 0).getTime();
+  const r = parseUtterance('今天中午吃饭35块，晚上和客户吃饭1200泰铢这笔要报销，打车回家用现金付了80，下午买了一本书58元', N);
+  assert.equal(r.type, 'entries');
+  assert.deepEqual(r.items.map(e => [e.title, e.amount, e.currency, e.category, e.reimbursable, e.start ? hm(e.start) : null]), [
+    ['中午吃饭', 35, 'CNY', 'food', false, '12日12:30'],
+    ['和客户吃饭', 1200, 'THB', 'food', true, '12日20:00'],
+    ['打车回家', 80, 'CNY', 'transport', false, null],
+    ['买了一本书', 58, 'CNY', 'shopping', false, '12日15:00'],
+  ]);
+  // 「一共」是合计，不单独记，也不影响前一笔
+  assert.deepEqual(parseEntries('早饭8块午饭25块一共33块', N).map(e => [e.title, e.amount]), [['早饭', 8], ['午饭', 25]]);
+  // 「昨天」对每一笔都生效
+  assert.deepEqual(parseEntries('昨天午饭120泰铢，晚饭300泰铢，然后去超市买菜花了450', N).map(e => [e.title, e.amount, e.currency, hm(e.start)]),
+    [['午饭', 120, 'THB', '11日12:30'], ['晚饭', 300, 'THB', '11日19:00'], ['去超市买菜', 450, 'CNY', '11日12:00']]);
+  // 时间和钱混着说
+  const mix = parseEntries('上午9点到11点写方案，中午吃饭35块，下午开会两个小时', N);
+  assert.deepEqual(mix.map(e => [e.title, e.amount, e.durationMin, hm(e.start)]), [['写方案', null, 120, '12日9:00'], ['中午吃饭', 35, null, '12日12:30'], ['开会', null, 120, '12日15:00']]);
+  // 收入和支出
+  assert.deepEqual(parseEntries('工资到账1万5，房租付了8000', N).map(e => [e.direction, e.amount]), [['in', 15000], ['out', 8000]]);
+  // 没带单位的数字
+  const f = parseUtterance('做完了，打车28，午饭35', N);
+  assert.equal(f.type, 'finish'); assert.equal(f.entry.amount, 28); assert.equal(f.extra[0].amount, 35);
+  assert.equal(parseUtterance('房间1203', N).amount, null);
+  assert.equal(parseEntries('今天中午吃饭35块微信付的，打车20', N)[0].title, '中午吃饭');
+});

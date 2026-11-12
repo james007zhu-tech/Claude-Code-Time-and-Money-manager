@@ -5,7 +5,11 @@ import { aiParse } from './ai.js';
 import { fmtMin, fmtMoney, fmtRecMoney, toBase, convert, guessAccountType, summarizeTime, summarizeMoney, compileRules } from './analytics.js';
 import { matchAccount, defaultAccountFor, isCompany } from './accounts.js';
 import { $, $$, esc, uid, store, settings, saveSettings, aiConfig, toast, fmtClock, resetPool } from './ui.js';
-import { openSheet, saveRecord, recItem, sheetOpen, dataChanged } from './sheet.js';
+import { openSheet, saveRecord, recItem, sheetOpen, dataChanged, addPhotosToSheet, compressImage } from './sheet.js';
+import { openBatch } from './batch.js';
+import { recognizeReceipt } from './receipt.js';
+import { aiReceipt } from './ai.js';
+import { paymentHint } from './accounts.js';
 import { renderReview, renderTime, renderWealth, answerQuestion, openReportDialog } from './views.js';
 import { renderSettings, autoSync } from './settings.js';
 
@@ -127,8 +131,14 @@ async function handleCommand(text, { audio = null } = {}) {
     return;
   }
   if (intent.type === 'finish') {
-    if (intent.entry?.amount != null) Object.assign(intent.entry, await accountFieldsFor(text, intent.entry));
+    if (intent.entry?.amount != null) Object.assign(intent.entry, await accountFieldsFor(intent.extra?.length ? intent.entry.note : text, intent.entry));
     await finishActivity(intent.entry, extras);
+    // 「做完了，打车28，午饭35」：第一笔算在这件事上，其余的列出来核对
+    if (intent.extra?.length) await reviewItems(intent.extra, { audio: null });
+    return;
+  }
+  if (intent.type === 'entries') {
+    await reviewItems(intent.items, { audio });
     return;
   }
   if (intent.type === 'balance' && intent.value != null) {
@@ -171,6 +181,16 @@ async function handleCommand(text, { audio = null } = {}) {
     return;
   }
   toast(`已记：${rec.activity || rec.note}${what ? ' · ' + what : ''}`, { label: '修改', run: () => openSheet(rec) });
+}
+
+// 一口气说了好几笔：每笔各自找账户，然后列出来让用户核对
+async function reviewItems(list, { audio }) {
+  const items = [];
+  for (const it of list) {
+    const acc = it.amount != null ? await accountFieldsFor(it.accountHint || it.note || it.title, it) : {};
+    items.push({ ...it, ...acc });
+  }
+  await openBatch(items, { heading: `听到 ${items.length} 笔，核对一下`, audio });
 }
 
 const moneyFields = i => ({
@@ -336,6 +356,65 @@ $('#activity-card').addEventListener('click', async e => {
 $('#btn-new').addEventListener('click', () => openSheet());
 $('#btn-photo').addEventListener('click', () => openSheet(null, { pickPhoto: 'camera', heading: '凭证记一笔' }));
 $('#btn-album').addEventListener('click', () => openSheet(null, { pickPhoto: 'gallery', heading: '凭证记一笔' }));
+
+// ---------- 拖进来 / 粘贴凭证图片 ----------
+const imageFiles = list => [...(list || [])].filter(f => f.type?.startsWith('image/'));
+const dialogOpen = () => !$('#dialog').hidden || !$('#report').hidden;
+
+async function handleImages(files) {
+  if (!files.length) return;
+  if (sheetOpen()) { addPhotosToSheet(files); return; }       // 正在编辑一条：直接加到这条上
+  if (dialogOpen()) { toast('先关掉当前窗口，再拖入或粘贴图片'); return; }
+  if (files.length === 1) {                                    // 一张：打开记账页并自动识别
+    openSheet(null, { heading: '凭证记一笔' });
+    addPhotosToSheet(files);
+    return;
+  }
+  // 多张：每张识别成一笔，列出来核对
+  const accounts = await activeAccounts();
+  const items = [];
+  for (const [i, f] of files.entries()) {
+    heroState('busy', `正在识别第 ${i + 1} / ${files.length} 张凭证…`);
+    const photo = await compressImage(f);
+    let r = null, warn = '';
+    try {
+      r = await recognizeReceipt(photo, { ai: aiConfig(), aiReceipt });
+    } catch (e) {
+      warn = '没认出来，请手动填：' + e.message;
+    }
+    const hint = r && (r.payment || paymentHint(r.text || ''));
+    const acc = hint ? matchAccount(hint, accounts) : null;
+    items.push({
+      title: r ? [r.merchant, r.purpose].filter(Boolean).join(' ') : `凭证 ${i + 1}`, note: '',
+      amount: r?.amount ?? null, currency: r?.currency || acc?.currency || getDefaultCurrency(), currencyExplicit: !!r?.currency,
+      direction: 'out', category: r?.category || 'other', start: r?.time || Date.now(), reimbursable: false,
+      accountId: acc?.id || null, photos: [photo], warn,
+    });
+  }
+  heroState('idle');
+  await openBatch(items, { heading: `${items.length} 张凭证，核对一下`, source: 'receipt' });
+}
+
+const dropHint = $('#drop-hint');
+let dragDepth = 0;
+const hasFiles = e => [...(e.dataTransfer?.types || [])].includes('Files');
+document.addEventListener('dragenter', e => { if (hasFiles(e)) { dragDepth++; dropHint.hidden = false; } });
+document.addEventListener('dragleave', e => { if (hasFiles(e) && --dragDepth <= 0) { dragDepth = 0; dropHint.hidden = true; } });
+document.addEventListener('dragover', e => { if (hasFiles(e)) e.preventDefault(); });
+document.addEventListener('drop', e => {
+  if (!hasFiles(e)) return;
+  e.preventDefault();
+  dragDepth = 0;
+  dropHint.hidden = true;
+  const files = imageFiles(e.dataTransfer.files);
+  if (files.length) handleImages(files); else toast('只能拖入图片');
+});
+document.addEventListener('paste', e => {
+  const files = imageFiles(e.clipboardData?.files);
+  if (!files.length) return;          // 粘贴的是文字：照常处理
+  e.preventDefault();
+  handleImages(files);
+});
 
 // ---------- 首页：今天 ----------
 async function renderHome() {
