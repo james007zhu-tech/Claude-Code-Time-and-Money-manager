@@ -4,6 +4,7 @@ import { CATEGORIES, INCOME_CATEGORIES, TIME_CATS, CURRENCIES, catById, timeCatB
 import { VoiceCapture, speechSupported } from './voice.js';
 import { fmtMin, fmtRecMoney, accountType } from './analytics.js';
 import { matchAccount, paymentHint } from './accounts.js';
+import { svg } from './icons.js';
 import { $, $$, esc, uid, store, settings, aiConfig, toast, blobUrl, resetPool, toLocalInput, fmtTime } from './ui.js';
 import { recognizeReceipt } from './receipt.js';
 import { aiReceipt } from './ai.js';
@@ -14,17 +15,17 @@ export const dataChanged = () => document.dispatchEvent(new Event('data-changed'
 export function recItem(r, pool) {
   const isIn = r.direction === 'in';
   const isTransfer = r.direction === 'transfer';
-  const c = isTransfer ? { icon: '🔁', name: '转账' } : r.amount != null ? catById(r.category) : timeCatById(r.timeCat);
-  const icon = r.photos?.length ? `<img src="${blobUrl(pool, r.photos[0])}" alt="">` : `<span>${c.icon}</span>`;
+  const c = isTransfer ? { icon: svg('swap'), color: '#8E8E93', name: '转账' } : r.amount != null ? catById(r.category) : timeCatById(r.timeCat);
+  const icon = r.photos?.length ? `<img src="${blobUrl(pool, r.photos[0])}" alt="">` : `<span class="tile" style="--tint:${c.color || '#8E8E93'}">${c.icon}</span>`;
   const meta = [fmtTime(r.time)];
-  if (r.durationMin) meta.push('⏱ ' + fmtMin(r.durationMin));
+  if (r.durationMin) meta.push(fmtMin(r.durationMin));
   if (r.timeCat) meta.push(timeCatById(r.timeCat).short);
   if (r.amount != null && !isTransfer) meta.push(c.name);
   if (r.accountName && !isTransfer) meta.push(esc(r.accountName));
   if (r.company) meta.push('<span class="badge company">公司</span>');
   if (r.reimbursable) meta.push(r.reimbursed ? '<span class="badge done">已报销</span>' : r.reimbSubmittedAt ? '<span class="badge">已提交</span>' : '<span class="badge">待报销</span>');
-  if (r.audio) meta.push('🔊');
-  if (r.photos?.length > 1) meta.push(`📎${r.photos.length}`);
+  if (r.audio) meta.push(svg('speaker'));
+  if (r.photos?.length > 1) meta.push(`${svg('clip')}${r.photos.length}`);
   const title = r.activity || r.note || c.name;
   const sub = r.activity && r.note && r.note !== r.activity ? `<div class="rec-note">${esc(r.note)}</div>` : '';
   return `<li class="rec" data-id="${r.id}">
@@ -198,13 +199,13 @@ function setReceiptStatus(html, busy = false) {
 
 async function recognizePhoto(blob) {
   const token = draft;
-  setReceiptStatus('🔍 正在识别凭证…', true);
+  setReceiptStatus('正在识别凭证…', true);
   try {
-    const r = await recognizeReceipt(blob, { ai: aiConfig(), aiReceipt, onProgress: msg => draft === token && setReceiptStatus(`🔍 ${esc(msg)}`, true) });
+    const r = await recognizeReceipt(blob, { ai: aiConfig(), aiReceipt, onProgress: msg => draft === token && setReceiptStatus(esc(msg), true) });
     if (draft !== token) return;
     applyReceipt(r);
   } catch (e) {
-    if (draft === token) setReceiptStatus(`⚠️ ${esc(e.message)}`);
+    if (draft === token) setReceiptStatus(`${svg('warn')}${esc(e.message)}`);
   }
 }
 
@@ -243,7 +244,7 @@ function applyReceipt(r) {
   const by = r.source === 'ai' ? 'AI' : '手机识别';
   setReceiptStatus(r.amount == null && !r.merchant
     ? '没认出内容，可以手动填写'
-    : `✅ 已识别（${by}）：${esc([purpose, ...filled].filter(Boolean).join(' · '))}<br><small class="muted">请核对一下，不对可以直接改</small>`);
+    : `${svg('check')}已识别（${by}）：${esc([purpose, ...filled].filter(Boolean).join(' · '))}<br><small class="muted">请核对一下，不对可以直接改</small>`);
 }
 
 $('#btn-recognize').addEventListener('click', () => {

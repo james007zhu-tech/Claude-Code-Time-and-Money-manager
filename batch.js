@@ -9,7 +9,7 @@ let items = [];
 let accounts = [];
 
 const catOptions = it => (it.direction === 'in' ? INCOME_CATEGORIES : CATEGORIES)
-  .map(c => `<option value="${c.id}"${c.id === it.category ? ' selected' : ''}>${c.icon} ${c.name}</option>`).join('');
+  .map(c => `<option value="${c.id}"${c.id === it.category ? ' selected' : ''}>${c.name}</option>`).join('');
 
 function row(it, i) {
   const money = it.amount != null;

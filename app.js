@@ -4,6 +4,7 @@ import { VoiceCapture, speechSupported } from './voice.js';
 import { aiParse } from './ai.js';
 import { fmtMin, fmtMoney, fmtRecMoney, toBase, convert, guessAccountType, summarizeTime, summarizeMoney, compileRules } from './analytics.js';
 import { matchAccount, defaultAccountFor, isCompany } from './accounts.js';
+import { svg, hydrateIcons } from './icons.js';
 import { $, $$, esc, uid, store, settings, saveSettings, aiConfig, toast, fmtClock, resetPool } from './ui.js';
 import { openSheet, saveRecord, recItem, sheetOpen, dataChanged, addPhotosToSheet, compressImage } from './sheet.js';
 import { openBatch } from './batch.js';
@@ -12,6 +13,8 @@ import { aiReceipt } from './ai.js';
 import { paymentHint } from './accounts.js';
 import { renderReview, renderTime, renderWealth, answerQuestion, openReportDialog } from './views.js';
 import { renderSettings, autoSync } from './settings.js';
+
+hydrateIcons();
 
 // ---------- 页面切换 ----------
 let currentView = 'home';
@@ -31,15 +34,15 @@ $$('.tabbar button').forEach(b => b.addEventListener('click', () => showView(b.d
 document.addEventListener('data-changed', () => refresh());
 
 // ---------- 首页：说一句 ----------
-const EXAMPLES = ['开始写季度方案，预计两小时', '做完了，打车花了28', '和客户吃饭1200泰铢，要报销', '酒店120美元', '下午2点到4点和客户开会', '刷了一个小时抖音', '工资到账1万5', '报销款到账3000', '招行卡余额5万3', '这几天我干什么去了？'];
+const EXAMPLES = ['午饭35，晚饭和客户吃了1200泰铢要报销', '开始写方案，预计两小时', '这几天我干什么去了？'];
 let heroVoice = null;
 
 function renderExamples() {
   const recent = store.get('recentActivities', []);
   const cur = currencyById(getDefaultCurrency());
   $('#hero-examples').innerHTML =
-    `<div class="cur-switch"><button class="chip" data-cycle-currency title="换一种默认币种">说「块」= ${cur.symbol} ${cur.name} ⇄</button></div>` +
-    (recent.length && !getActivity() ? `<div class="chips">${recent.slice(0, 4).map(n => `<button class="chip" data-quick-start="${esc(n)}">▶ ${esc(n)}</button>`).join('')}</div>` : '') +
+    `<div class="cur-switch"><button class="chip" data-cycle-currency title="换一种默认币种">说「块」= ${cur.symbol} ${cur.name}${svg('swap')}</button></div>` +
+    (recent.length && !getActivity() ? `<div class="chips">${recent.slice(0, 4).map(n => `<button class="chip" data-quick-start="${esc(n)}">${svg('play')}${esc(n)}</button>`).join('')}</div>` : '') +
     `<p class="hint">可以这样说：${EXAMPLES.map(e => `「${e}」`).join(' ')}</p>`;
 }
 $('#hero-examples').addEventListener('click', e => {
@@ -314,12 +317,12 @@ function renderActivity() {
   if (act) {
     const tc = timeCatById(act.timeCat);
     card.innerHTML = `<div class="act-run">
-      <div class="muted">${tc.icon} 正在做</div>
+      <div class="muted act-label">${tc.icon}正在做</div>
       <div class="act-name">${esc(act.name)}</div>
       <div class="act-clock" id="act-clock">${fmtClock(Date.now() - act.start)}</div>
       ${act.planMin ? `<div class="muted small">预计 ${fmtMin(act.planMin)}，到点提醒你</div>` : ''}
       <div class="btn-row">
-        <button class="btn primary grow" data-act="finish">✅ 做完了</button>
+        <button class="btn primary grow" data-act="finish">${svg('check')}做完了</button>
         <button class="btn ghost" data-act="cancel">放弃</button>
       </div>
       <p class="hint">也可以直接说「做完了，花了 xx 块」</p>
@@ -329,9 +332,9 @@ function renderActivity() {
       <div><b>「${esc(followUp.name)}」做完了</b>，用时 ${fmtMin(followUp.durationMin)}，已记录。</div>
       <div class="muted">这件事花钱了吗？</div>
       <div class="btn-row">
-        <button class="btn primary" data-act="photo">📷 拍凭证</button>
-        <button class="btn" data-act="album">🖼️ 相册</button>
-        <button class="btn" data-act="say">🎙️ 说花了多少</button>
+        <button class="btn primary" data-act="photo">${svg('camera')}拍凭证</button>
+        <button class="btn" data-act="album">${svg('photo')}相册</button>
+        <button class="btn" data-act="say">${svg('mic')}说花了多少</button>
         <button class="btn ghost" data-act="nomoney">没花钱</button>
       </div>
     </div>`;
@@ -426,8 +429,8 @@ async function renderHome() {
   const t = summarizeTime(recs, usage, range, compileRules(settings.appRules));
   const m = summarizeMoney(recs, range);
   const parts = [];
-  if (t.recorded) parts.push(`⏱ ${fmtMin(t.recorded)}`);
-  if (t.device.total) parts.push(`💻 ${fmtMin(t.device.total)}`);
+  if (t.recorded) parts.push(`${svg('clock')}${fmtMin(t.recorded)}`);
+  if (t.device.total) parts.push(`${svg('laptop')}${fmtMin(t.device.total)}`);
   parts.push(`支出 <b>${fmtMoney(m.out)}</b>`);
   if (m.in) parts.push(`收入 <b>${fmtMoney(m.in)}</b>`);
   if (m.reimbPending) parts.push(`待报销 <b>${fmtMoney(m.reimbPending)}</b>`);

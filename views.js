@@ -7,6 +7,7 @@ import {
   fmtMin, fmtHours, fmtMoney, fmtRecMoney, toBase, convert, baseCurrency, summarizeTime, summarizeMoney, compileRules, diagnosis, localAnswer, dataDigest,
   ACCOUNT_TYPES, accountType, balanceSheet, netWorthSeries, flowFor, healthCheck, futureValue, avgMonthlyOut,
 } from './analytics.js';
+import { svg } from './icons.js';
 import { $, esc, uid, store, settings, saveSettings, aiConfig, toast, resetPool, dayKey, dayLabel, barRow, chips, download } from './ui.js';
 import { buildReimbursementHtml } from './report.js';
 import { buildErpPayload, erpCsv, pushToErp, parseCodes } from './erp.js';
@@ -60,9 +61,9 @@ export async function renderReview() {
       ${m.reimbPending || m.reimbDone ? `<div class="kpi"><div class="muted">待报销</div><b>${fmtMoney(m.reimbPending)}</b></div><div class="kpi"><div class="muted">已报销</div><b>${fmtMoney(m.reimbDone)}</b></div>` : ''}
     </div>
     ${currencyNote(m)}
-    ${t.recorded ? `<h4>时间花在</h4>${Object.entries(t.byCat).sort((a, b) => b[1] - a[1]).map(([id, v]) => { const c = timeCatById(id); return barRow(`${c.icon} ${c.short}`, v, catMax, fmtHours(v), `${Math.round(v / t.recorded * 100)}%`); }).join('')}` : ''}
+    ${t.recorded ? `<h4>时间花在</h4>${Object.entries(t.byCat).sort((a, b) => b[1] - a[1]).map(([id, v]) => { const c = timeCatById(id); return barRow(`<span class="dot" style="--tint:${c.color}"></span>${c.short}`, v, catMax, fmtHours(v), `${Math.round(v / t.recorded * 100)}%`); }).join('')}` : ''}
     ${t.titles.length ? `<h4>主要在做</h4><div class="tags">${t.titles.slice(0, 10).map(x => `<span class="tagpill">${esc(x.title)} <b>${fmtHours(x.min)}</b></span>`).join('')}</div>` : ''}
-    ${m.out ? `<h4>钱花在</h4>${Object.entries(m.byCat).sort((a, b) => b[1] - a[1]).slice(0, 6).map(([id, v]) => { const c = catById(id); return barRow(`${c.icon} ${c.name}`, v, moneyMax, fmtMoney(v)); }).join('')}` : ''}
+    ${m.out ? `<h4>钱花在</h4>${Object.entries(m.byCat).sort((a, b) => b[1] - a[1]).slice(0, 6).map(([id, v]) => { const c = catById(id); return barRow(`<span class="dot" style="--tint:${c.color}"></span>${c.name}`, v, moneyMax, fmtMoney(v)); }).join('')}` : ''}
   </div>`;
 
   resetPool('review');
@@ -90,12 +91,12 @@ function timelineByDay(recs, usage, range) {
     const dr = { start: dayStart, end: dayStart + DAY };
     const t = summarizeTime(d.recs, d.usage, dr, rules());
     const m = summarizeMoney(d.recs, dr);
-    const head = [t.recorded ? `⏱ ${fmtHours(t.recorded)}` : '', t.device.total ? `💻 ${fmtHours(t.device.total)}` : '', m.out ? `-${fmtMoney(m.out)}` : '', m.in ? `+${fmtMoney(m.in)}` : ''].filter(Boolean).join(' · ');
+    const head = [t.recorded ? `${svg('clock')}${fmtHours(t.recorded)}` : '', t.device.total ? `${svg('laptop')}${fmtHours(t.device.total)}` : '', m.out ? `-${fmtMoney(m.out)}` : '', m.in ? `+${fmtMoney(m.in)}` : ''].filter(Boolean).join(' · ');
     const apps = t.device.apps.slice(0, 4).map(a => `${esc(a.app)} ${fmtMin(a.min)}`).join('，');
     return `<div class="card day">
       <div class="card-head"><span>${dayLabel(dayStart)}</span><span>${head}</span></div>
       <ul class="rec-list">${d.recs.sort((a, b) => b.time - a.time).map(r => recItem(r, 'review')).join('')}</ul>
-      ${apps ? `<div class="device-line">💻 ${apps}</div>` : ''}
+      ${apps ? `<div class="device-line">${svg('laptop')}${apps}</div>` : ''}
     </div>`;
   }).join('');
 }
@@ -118,7 +119,7 @@ function timelineByMonth(records, usage, range) {
       <div class="month-label">${d.getFullYear()}年${d.getMonth() + 1}月</div>
       <div class="month-main">
         <div>${t.titles.slice(0, 3).map(x => `${esc(x.title)}（${fmtHours(x.min)}）`).join('、') || '<span class="muted">没有事项记录</span>'}</div>
-        <div class="muted small">${[t.recorded ? `⏱ ${fmtHours(t.recorded)}` : '', t.device.total ? `💻 ${fmtHours(t.device.total)}` : '', `支出 ${fmtMoney(m.out)}`, m.in ? `收入 ${fmtMoney(m.in)}` : ''].filter(Boolean).join(' · ')}</div>
+        <div class="muted small">${[t.recorded ? `${svg('clock')}${fmtHours(t.recorded)}` : '', t.device.total ? `${svg('laptop')}${fmtHours(t.device.total)}` : '', `支出 ${fmtMoney(m.out)}`, m.in ? `收入 ${fmtMoney(m.in)}` : ''].filter(Boolean).join(' · ')}</div>
       </div>
     </div>`;
   }).join('');
@@ -160,7 +161,7 @@ export async function answerQuestion(q) {
   }
   lastAnswer = answer;
   box.innerHTML = `<div class="q">问：${esc(q.text)}</div><div class="a">${esc(answer).replace(/\n/g, '<br>')}</div>
-    <div class="btn-row"><button class="btn small" data-speak>🔊 朗读</button><button class="btn small ghost" data-stop>⏹ 停止</button>${by ? `<span class="muted small">${esc(by)}</span>` : ''}</div>`;
+    <div class="btn-row"><button class="btn small" data-speak>${svg('speaker')}朗读</button><button class="btn small ghost" data-stop>${svg('stop')}停止</button>${by ? `<span class="muted small">${esc(by)}</span>` : ''}</div>`;
   if (settings.speakAnswers) speak(answer);
 }
 $('#review-answer').addEventListener('click', e => {
@@ -239,11 +240,11 @@ export async function renderTime() {
     <h3>① 记录：时间去哪了</h3>
     ${t.recorded ? `
       <p class="muted small">你记录了 <b>${fmtHours(t.recorded)}</b>，日均 ${fmtHours(t.recorded / days)}；其中要事和学习占 <b>${Math.round(focusRecorded / t.recorded * 100)}%</b>。</p>
-      ${Object.entries(t.byCat).sort((a, b) => b[1] - a[1]).map(([id, v]) => { const c = timeCatById(id); return barRow(`${c.icon} ${c.short}`, v, catMax, fmtHours(v), `${Math.round(v / t.recorded * 100)}%`); }).join('')}`
+      ${Object.entries(t.byCat).sort((a, b) => b[1] - a[1]).map(([id, v]) => { const c = timeCatById(id); return barRow(`<span class="dot" style="--tint:${c.color}"></span>${c.short}`, v, catMax, fmtHours(v), `${Math.round(v / t.recorded * 100)}%`); }).join('')}`
     : '<p class="muted">还没有带时长的记录。说「开始…」「做完了」，或者「上午9点到11点写方案」。</p>'}
     ${t.device.total ? `
       <h4>电脑上（自动记录）共 ${fmtHours(t.device.total)}</h4>
-      ${Object.entries(t.device.byCat).sort((a, b) => b[1] - a[1]).map(([id, v]) => { const c = timeCatById(id); return barRow(`${c.icon} ${c.short}`, v, devMax, fmtHours(v), `${Math.round(v / t.device.total * 100)}%`); }).join('')}
+      ${Object.entries(t.device.byCat).sort((a, b) => b[1] - a[1]).map(([id, v]) => { const c = timeCatById(id); return barRow(`<span class="dot" style="--tint:${c.color}"></span>${c.short}`, v, devMax, fmtHours(v), `${Math.round(v / t.device.total * 100)}%`); }).join('')}
       <div class="app-list">${t.device.apps.slice(0, 10).map(a => `<div class="act-row"><span class="grow">${esc(a.app)} <small class="muted">${timeCatById(a.cat).short}</small></span><b>${fmtMin(a.min)}</b></div>`).join('')}</div>
       ${t.device.byCat.other ? '<p class="hint">「其他」里的软件可以在设置 → 软件归类规则里归类。</p>' : ''}`
     : '<p class="hint">在电脑上运行「电脑记录器」，可以自动记录每天在各个软件上花的时间（设置页下载）。</p>'}
@@ -300,7 +301,7 @@ export async function renderWealth() {
   const principal = Math.round(sheet.invest || 0);
   const allPending = records.filter(r => r.reimbursable && !r.reimbursed && r.amount != null).sort((a, b) => a.time - b.time);
   const pct = v => (v == null ? '—' : `${Math.round(v * 100)}%`);
-  const check = (ok, text, tip) => `<div class="check ${ok == null ? 'na' : ok ? 'ok' : 'warn'}"><span>${ok == null ? '·' : ok ? '✅' : '⚠️'}</span><div><div>${text}</div><div class="muted small">${tip}</div></div></div>`;
+  const check = (ok, text, tip) => `<div class="check ${ok == null ? 'na' : ok ? 'ok' : 'warn'}"><span>${ok == null ? svg('minus') : ok ? svg('check') : svg('warn')}</span><div><div>${text}</div><div class="muted small">${tip}</div></div></div>`;
 
   $('#wealth-body').innerHTML = `
   <div class="card networth">
@@ -381,7 +382,7 @@ export async function renderWealth() {
 // 账户列表：个人 / 公司分开；余额 = 最近核对的余额 + 之后的流水
 function accountsCard(sheet, accounts, month) {
   const row = r => `<div class="acct-row" data-account="${r.account.id}">
-    <span class="acct-icon">${r.type.icon}</span>
+    <span class="tile" style="--tint:${r.type.color}">${r.type.icon}</span>
     <div class="grow"><div>${esc(r.account.name)}</div><div class="muted small">${[
       r.type.name,
       r.updated ? `${dayLabel(r.updated).split(' ')[0]}核对` : '未核对',
@@ -421,7 +422,7 @@ function reimbCard(pending) {
   const total = pending.reduce((s, r) => s + toBase(r.amount, r.currency), 0);
   return `<div class="card">
     <div class="card-head"><h3>待报销 ${fmtMoney(total)}</h3><button class="btn small" data-settle="all">全部已报</button></div>
-    <button class="btn primary full" data-w="report">📄 生成报销单（A4，含凭证）</button>
+    <button class="btn primary full" data-w="report">${svg('doc')}生成报销单（A4，含凭证）</button>
     <p class="muted small">月底生成报销单交给公司；说「报销款到账 3000」会自动帮你核销。</p>
     ${pending.map(r => `<div class="act-row">
       <span class="grow">${esc(r.activity || r.note || catById(r.category).name)} <small class="muted">${dayLabel(r.time).split(' ')[0]}${r.photos?.length ? '' : ' · 无凭证'}</small>${r.reimbSubmittedAt ? ' <span class="badge done">已提交</span>' : ''}</span>
@@ -622,7 +623,7 @@ async function accountDialog(acc) {
       <label>别名（说话时可能怎么叫它，用逗号分开）</label>
       <input class="input" name="aliases" value="${esc((acc?.aliases || []).join('，'))}" placeholder="例如：开泰，K PLUS，泰国卡">
       <div class="grid2">
-        <label>类型<select class="input" name="type">${ACCOUNT_TYPES.map(t => `<option value="${t.id}"${(acc?.type || 'bank') === t.id ? ' selected' : ''}>${t.icon} ${t.name}</option>`).join('')}</select></label>
+        <label>类型<select class="input" name="type">${ACCOUNT_TYPES.map(t => `<option value="${t.id}"${(acc?.type || 'bank') === t.id ? ' selected' : ''}>${t.name}</option>`).join('')}</select></label>
         <label>币种<select class="input" name="currency">${CURRENCIES.map(c => `<option value="${c.id}"${cur === c.id ? ' selected' : ''}>${c.symbol} ${c.name}</option>`).join('')}</select></label>
       </div>
       <label>归属</label>

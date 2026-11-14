@@ -1,42 +1,44 @@
 // 本地理解一句中文：记一笔（时间 + 钱）、开始/结束一件事、更新账户余额、提问回顾。
 // 不联网也能用；配置了 Claude 后由 ai.js 做更聪明的理解。
 
+import { svg } from './icons.js';
+
 export const CATEGORIES = [
-  { id: 'food', name: '餐饮', icon: '🍜', kw: ['吃', '饭', '餐', '早点', '夜宵', '宵夜', '外卖', '咖啡', '奶茶', '饮料', '水果', '零食', '火锅', '烧烤', '面条', '拉面', '米粉', '包子', '茶', '酒', '聚餐', '食堂', '买单', '美团', '饿了么', '喝'] },
-  { id: 'transport', name: '交通', icon: '🚕', kw: ['打车', '滴滴', '出租', '地铁', '公交', '高铁', '火车', '机票', '飞机', '加油', '油费', '停车', '过路费', '高速', '单车', '车费', '车票', '网约车', '充电', '洗车'] },
-  { id: 'shopping', name: '购物', icon: '🛍️', kw: ['买', '超市', '淘宝', '京东', '拼多多', '衣服', '裤子', '鞋', '日用', '商场', '网购', '便利店'] },
-  { id: 'fun', name: '娱乐', icon: '🎮', kw: ['电影', '游戏', 'ktv', '唱歌', '门票', '健身', '打球', '演唱会', '会员', '按摩', 'spa', '酒吧'] },
-  { id: 'travel', name: '旅行住宿', icon: '🏨', kw: ['酒店', '住宿', '民宿', '旅馆', '签证', '旅游', '景点', '行李', '换汇', 'airbnb'] },
-  { id: 'home', name: '居家', icon: '🏠', kw: ['房租', '水费', '电费', '燃气', '物业', '话费', '宽带', '维修', '家具', '家电', '保洁', '快递'] },
-  { id: 'health', name: '医疗', icon: '💊', kw: ['医院', '看病', '药', '挂号', '体检', '牙', '诊所'] },
-  { id: 'study', name: '学习', icon: '📚', kw: ['书', '课', '培训', '学费', '考试', '文具', '打印'] },
-  { id: 'social', name: '人情', icon: '🎁', kw: ['红包', '礼物', '请客', '份子', '送礼', '随礼', '礼金'] },
-  { id: 'work', name: '工作', icon: '💼', kw: ['办公', '出差', '客户', '差旅', '会议'] },
-  { id: 'invest', name: '投资', icon: '📈', kw: ['基金', '股票', '定投', '理财', '债券', '买入', '申购'] },
-  { id: 'other', name: '其他', icon: '📝', kw: [] },
+  { id: 'food', name: '餐饮', icon: svg('fork'), color: '#FF9500', kw: ['吃', '饭', '餐', '早点', '夜宵', '宵夜', '外卖', '咖啡', '奶茶', '饮料', '水果', '零食', '火锅', '烧烤', '面条', '拉面', '米粉', '包子', '茶', '酒', '聚餐', '食堂', '买单', '美团', '饿了么', '喝'] },
+  { id: 'transport', name: '交通', icon: svg('car'), color: '#007AFF', kw: ['打车', '滴滴', '出租', '地铁', '公交', '高铁', '火车', '机票', '飞机', '加油', '油费', '停车', '过路费', '高速', '单车', '车费', '车票', '网约车', '充电', '洗车'] },
+  { id: 'shopping', name: '购物', icon: svg('bag'), color: '#FF2D55', kw: ['买', '超市', '淘宝', '京东', '拼多多', '衣服', '裤子', '鞋', '日用', '商场', '网购', '便利店'] },
+  { id: 'fun', name: '娱乐', icon: svg('game'), color: '#AF52DE', kw: ['电影', '游戏', 'ktv', '唱歌', '门票', '健身', '打球', '演唱会', '会员', '按摩', 'spa', '酒吧'] },
+  { id: 'travel', name: '旅行住宿', icon: svg('bed'), color: '#5856D6', kw: ['酒店', '住宿', '民宿', '旅馆', '签证', '旅游', '景点', '行李', '换汇', 'airbnb'] },
+  { id: 'home', name: '居家', icon: svg('home'), color: '#30B0C7', kw: ['房租', '水费', '电费', '燃气', '物业', '话费', '宽带', '维修', '家具', '家电', '保洁', '快递'] },
+  { id: 'health', name: '医疗', icon: svg('pill'), color: '#FF3B30', kw: ['医院', '看病', '药', '挂号', '体检', '牙', '诊所'] },
+  { id: 'study', name: '学习', icon: svg('book'), color: '#34C759', kw: ['书', '课', '培训', '学费', '考试', '文具', '打印'] },
+  { id: 'social', name: '人情', icon: svg('gift'), color: '#FF6482', kw: ['红包', '礼物', '请客', '份子', '送礼', '随礼', '礼金'] },
+  { id: 'work', name: '工作', icon: svg('briefcase'), color: '#A2845E', kw: ['办公', '出差', '客户', '差旅', '会议'] },
+  { id: 'invest', name: '投资', icon: svg('trend'), color: '#00C7BE', kw: ['基金', '股票', '定投', '理财', '债券', '买入', '申购'] },
+  { id: 'other', name: '其他', icon: svg('note'), color: '#8E8E93', kw: [] },
 ];
 
 export const INCOME_CATEGORIES = [
-  { id: 'salary', name: '工资', icon: '💰', kw: ['工资', '薪水', '薪资', '月薪'] },
-  { id: 'bonus', name: '奖金', icon: '🏆', kw: ['奖金', '年终', '提成', '绩效'] },
-  { id: 'invest_income', name: '投资收益', icon: '📈', kw: ['分红', '利息', '收益', '股息', '卖出'] },
-  { id: 'side', name: '副业', icon: '🧰', kw: ['副业', '兼职', '稿费', '咨询费', '外快'] },
-  { id: 'refund', name: '报销退款', icon: '↩️', kw: ['报销', '退款', '退回'] },
-  { id: 'other_income', name: '其他收入', icon: '💵', kw: [] },
+  { id: 'salary', name: '工资', icon: svg('banknote'), color: '#34C759', kw: ['工资', '薪水', '薪资', '月薪'] },
+  { id: 'bonus', name: '奖金', icon: svg('trophy'), color: '#FFCC00', kw: ['奖金', '年终', '提成', '绩效'] },
+  { id: 'invest_income', name: '投资收益', icon: svg('trend'), color: '#00C7BE', kw: ['分红', '利息', '收益', '股息', '卖出'] },
+  { id: 'side', name: '副业', icon: svg('wrench'), color: '#A2845E', kw: ['副业', '兼职', '稿费', '咨询费', '外快'] },
+  { id: 'refund', name: '报销退款', icon: svg('undo'), color: '#30B0C7', kw: ['报销', '退款', '退回'] },
+  { id: 'other_income', name: '其他收入', icon: svg('banknote'), color: '#8E8E93', kw: [] },
 ];
 
 // 德鲁克：先记录时间，再分析，最后把可自由支配的时间整合成大块。
 // kind=focus 的是「要事」，用来计算整块时间。
 export const TIME_CATS = [
-  { id: 'deep', name: '要事·深度工作', short: '要事', icon: '🎯', kind: 'focus', kw: ['写', '方案', '设计', '编程', '代码', '开发', '报告', '策划', '研究', '分析', '思考', '规划', '复盘', '创作', '写作'] },
-  { id: 'meeting', name: '沟通会议', short: '沟通', icon: '💬', kind: 'collab', kw: ['开会', '会议', '沟通', '电话', '拜访', '客户', '面试', '谈', '约见', '汇报', '讨论', '见'] },
-  { id: 'admin', name: '事务杂项', short: '杂务', icon: '📋', kind: 'admin', kw: ['邮件', '回复', '整理', '填表', '审批', '办事', '手续', '排队', '杂事'] },
-  { id: 'learn', name: '学习成长', short: '学习', icon: '📚', kind: 'focus', kw: ['学习', '看书', '书', '读书', '上课', '课程', '培训', '练习', '背单词', '听课'] },
-  { id: 'health', name: '运动健康', short: '健康', icon: '🏃', kind: 'life', kw: ['跑步', '健身', '运动', '游泳', '瑜伽', '散步', '打球', '医院', '看病', '体检', '睡觉', '午睡'] },
-  { id: 'family', name: '家庭生活', short: '生活', icon: '🏠', kind: 'life', kw: ['家务', '做饭', '吃饭', '买菜', '超市', '陪', '孩子', '老婆', '老公', '父母', '家人', '接送', '带娃', '洗衣'] },
-  { id: 'commute', name: '通勤路上', short: '路上', icon: '🚇', kind: 'life', kw: ['通勤', '路上', '打车', '地铁', '开车', '坐车', '高铁', '飞机', '出差路上'] },
-  { id: 'leisure', name: '休闲娱乐', short: '休闲', icon: '🎮', kind: 'leisure', kw: ['刷', '抖音', '视频', '游戏', '电影', '电视', '追剧', '微博', '小红书', 'b站', '玩', '休息', '聊天'] },
-  { id: 'other', name: '其他', short: '其他', icon: '⏱', kind: 'other', kw: [] },
+  { id: 'deep', name: '要事·深度工作', short: '要事', icon: svg('target'), color: '#FF3B30', kind: 'focus', kw: ['写', '方案', '设计', '编程', '代码', '开发', '报告', '策划', '研究', '分析', '思考', '规划', '复盘', '创作', '写作'] },
+  { id: 'meeting', name: '沟通会议', short: '沟通', icon: svg('chat'), color: '#007AFF', kind: 'collab', kw: ['开会', '会议', '沟通', '电话', '拜访', '客户', '面试', '谈', '约见', '汇报', '讨论', '见'] },
+  { id: 'admin', name: '事务杂项', short: '杂务', icon: svg('list'), color: '#8E8E93', kind: 'admin', kw: ['邮件', '回复', '整理', '填表', '审批', '办事', '手续', '排队', '杂事'] },
+  { id: 'learn', name: '学习成长', short: '学习', icon: svg('book'), color: '#34C759', kind: 'focus', kw: ['学习', '看书', '书', '读书', '上课', '课程', '培训', '练习', '背单词', '听课'] },
+  { id: 'health', name: '运动健康', short: '健康', icon: svg('run'), color: '#34C759', kind: 'life', kw: ['跑步', '健身', '运动', '游泳', '瑜伽', '散步', '打球', '医院', '看病', '体检', '睡觉', '午睡'] },
+  { id: 'family', name: '家庭生活', short: '生活', icon: svg('home'), color: '#30B0C7', kind: 'life', kw: ['家务', '做饭', '吃饭', '买菜', '超市', '陪', '孩子', '老婆', '老公', '父母', '家人', '接送', '带娃', '洗衣'] },
+  { id: 'commute', name: '通勤路上', short: '路上', icon: svg('train'), color: '#5856D6', kind: 'life', kw: ['通勤', '路上', '打车', '地铁', '开车', '坐车', '高铁', '飞机', '出差路上'] },
+  { id: 'leisure', name: '休闲娱乐', short: '休闲', icon: svg('game'), color: '#AF52DE', kind: 'leisure', kw: ['刷', '抖音', '视频', '游戏', '电影', '电视', '追剧', '微博', '小红书', 'b站', '玩', '休息', '聊天'] },
+  { id: 'other', name: '其他', short: '其他', icon: svg('timer'), color: '#8E8E93', kind: 'other', kw: [] },
 ];
 
 const findById = list => id => list.find(c => c.id === id) || list[list.length - 1];

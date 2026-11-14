@@ -39,9 +39,9 @@ export function renderSettings() {
   $('#s-notify-state').textContent = notifyState();
   $('#s-notify').hidden = !('Notification' in window) || Notification.permission !== 'default';
   $('#s-voice-state').textContent = [
-    speechSupported() ? '✅ 支持语音转文字（需联网）' : '⚠️ 不支持语音转文字，可用输入法键盘上的话筒',
-    recorderSupported() ? '✅ 支持保存录音' : '⚠️ 不支持保存录音',
-    window.speechSynthesis ? '✅ 支持朗读' : '⚠️ 不支持朗读',
+    speechSupported() ? '支持语音转文字（需联网）' : '不支持语音转文字，可用输入法键盘上的话筒',
+    recorderSupported() ? '支持保存录音' : '不支持保存录音',
+    window.speechSynthesis ? '支持朗读' : '不支持朗读',
   ].join('；');
   const canPick = 'showDirectoryPicker' in window;
   $('#s-sync-folder').hidden = !canPick;
@@ -116,7 +116,7 @@ bind('#s-ai-test', 'click', async () => {
   toast('连接中…');
   try {
     await aiTest({ apiKey: settings.apiKey, model: settings.model });
-    toast('✅ 连接成功');
+    toast('连接成功');
   } catch (e) {
     toast('连接失败：' + e.message);
   }

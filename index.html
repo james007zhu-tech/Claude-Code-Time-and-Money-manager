@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-  <meta name="theme-color" content="#12a37b">
+  <meta name="theme-color" content="#f2f2f7">
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-title" content="时间账本">
@@ -29,7 +29,7 @@
     <!-- 首页：说一句 -->
     <section id="view-home" class="view active" data-title="时间账本">
       <div class="card hero">
-        <button id="hero-mic" class="mic big" aria-label="说一句">🎙️</button>
+        <button id="hero-mic" class="mic big" aria-label="说一句"><i data-ic="mic"></i></button>
         <div id="hero-hint" class="hero-hint">点一下，说一句</div>
         <div id="hero-live" class="live" hidden></div>
         <form id="hero-form" class="ask-row">
@@ -42,9 +42,9 @@
       <div id="activity-card" class="card" hidden></div>
 
       <div class="quick-row">
-        <button id="btn-photo" class="btn">📷 拍凭证</button>
-        <button id="btn-album" class="btn">🖼️ 相册选凭证</button>
-        <button id="btn-new" class="btn">✍️ 手动记</button>
+        <button id="btn-photo" class="btn"><i data-ic="camera"></i>拍凭证</button>
+        <button id="btn-album" class="btn"><i data-ic="photo"></i>相册</button>
+        <button id="btn-new" class="btn"><i data-ic="pencil"></i>手动记</button>
       </div>
       <p class="hint center desktop-only">电脑上可以把凭证图片直接拖进来，或截图后按 Ctrl+V / ⌘V 粘贴</p>
 
@@ -57,7 +57,7 @@
     <!-- 回顾：这几天/这几年干了什么 -->
     <section id="view-review" class="view" data-title="回顾">
       <form id="ask-form" class="ask-row">
-        <button type="button" id="ask-mic" class="mic small" aria-label="语音提问">🎙️</button>
+        <button type="button" id="ask-mic" class="mic small" aria-label="语音提问"><i data-ic="mic"></i></button>
         <input id="ask-input" class="input" placeholder="问：这几天我干了什么？" enterkeyhint="search" autocomplete="off">
         <button class="btn primary">问</button>
       </form>
@@ -186,11 +186,11 @@
   </main>
 
   <nav class="tabbar">
-    <button data-view="home" class="active"><span>🎙️</span>记录</button>
-    <button data-view="review"><span>🗓️</span>回顾</button>
-    <button data-view="time"><span>⏳</span>时间</button>
-    <button data-view="wealth"><span>💰</span>财富</button>
-    <button data-view="settings"><span>⚙️</span>设置</button>
+    <button data-view="home" class="active"><i data-ic="mic"></i>记录</button>
+    <button data-view="review"><i data-ic="calendar"></i>回顾</button>
+    <button data-view="time"><i data-ic="hourglass"></i>时间</button>
+    <button data-view="wealth"><i data-ic="wallet"></i>财富</button>
+    <button data-view="settings"><i data-ic="gear"></i>设置</button>
   </nav>
 
   <!-- 记录编辑 -->
@@ -206,9 +206,9 @@
           <label>凭证 <small class="muted">拍照或从相册选，自动识别金额、时间、用途</small></label>
           <div id="photo-list" class="photos"></div>
           <div class="btn-row">
-            <button id="btn-camera" class="btn">📷 拍照</button>
-            <button id="btn-gallery" class="btn">🖼️ 相册</button>
-            <button id="btn-recognize" class="btn ghost" hidden>🔍 重新识别</button>
+            <button id="btn-camera" class="btn"><i data-ic="camera"></i>拍照</button>
+            <button id="btn-gallery" class="btn"><i data-ic="photo"></i>相册</button>
+            <button id="btn-recognize" class="btn ghost" hidden><i data-ic="search"></i>重新识别</button>
           </div>
           <div id="receipt-status" class="receipt-status" hidden></div>
           <input id="in-camera" type="file" accept="image/*" capture="environment" hidden>
@@ -219,7 +219,7 @@
           <label for="f-activity">做了什么</label>
           <input id="f-activity" class="input" placeholder="例如：拜访客户、写方案">
           <div class="voice">
-            <button id="btn-mic" class="mic" aria-label="开始说话">🎙️</button>
+            <button id="btn-mic" class="mic" aria-label="开始说话"><i data-ic="mic"></i></button>
             <div id="mic-hint" class="hint">点一下补充说明，说完再点一下</div>
             <div id="live-text" class="live" hidden></div>
             <div id="audio-box" class="audio-box" hidden>
@@ -231,7 +231,7 @@
         </div>
 
         <div class="field">
-          <label>⏱ 时间</label>
+          <label>时间</label>
           <div class="grid2">
             <div><small class="muted">开始</small><input id="f-time" class="input" type="datetime-local"></div>
             <div><small class="muted">用了几分钟</small><input id="f-duration" class="input" type="number" inputmode="numeric" min="0" placeholder="不记时间可空着"></div>
@@ -240,7 +240,7 @@
         </div>
 
         <div class="field">
-          <label>¥ 钱 <small id="amount-auto" class="tag" hidden>自动识别</small></label>
+          <label>金额 <small id="amount-auto" class="tag" hidden>自动识别</small></label>
           <div class="money-row">
             <div class="seg" id="f-direction">
               <button data-dir="out" class="active">支出</button><button data-dir="in">收入</button><button data-dir="transfer">转账</button>
@@ -287,7 +287,7 @@
       <span id="report-title" class="report-title"></span>
     </div>
     <div class="report-actions">
-      <button class="btn primary small" data-report="print">🖨️ 打印 / 存 PDF</button>
+      <button class="btn primary small" data-report="print"><i data-ic="printer"></i>打印 / 存 PDF</button>
       <button class="btn small" data-report="download">下载单据</button>
       <button class="btn small" data-report="csv">明细表（Excel）</button>
       <button class="btn small" data-report="erp-json">导出给 ERP</button>
@@ -297,7 +297,7 @@
     <iframe id="report-frame" title="报销单"></iframe>
   </div>
 
-  <div id="drop-hint" class="drop-hint" hidden><div>📥 松手放入凭证图片<br><small>一张：直接识别记一笔 · 多张：每张一笔，一起核对</small></div></div>
+  <div id="drop-hint" class="drop-hint" hidden><div><i data-ic="tray"></i><br>松手放入凭证图片<br><small>一张：直接识别记一笔 · 多张：每张一笔，一起核对</small></div></div>
 
   <div id="viewer" class="viewer" hidden><img alt="凭证"></div>
   <div id="toast" class="toast" hidden></div>

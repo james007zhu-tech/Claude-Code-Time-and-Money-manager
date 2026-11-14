@@ -1,4 +1,5 @@
 // 纯计算：时间分析（德鲁克）、财务分析（巴菲特）、回顾问答的本地回答。
+import { svg } from './icons.js';
 import { TIME_CATS, timeCatById, catById, guessTimeCat, currencyById } from './parser.js';
 
 const MIN = 60000;
@@ -188,18 +189,18 @@ export function summarizeMoney(events, range) {
 
 // 资产负债：每个账户取 at 之前最新的余额
 export const ACCOUNT_TYPES = [
-  { id: 'cash', name: '现金', icon: '💵', liquid: true },
-  { id: 'bank', name: '银行卡/活期', icon: '💳', liquid: true },
-  { id: 'wallet', name: '微信/支付宝', icon: '📱', liquid: true },
-  { id: 'deposit', name: '定期存款', icon: '🏦', liquid: true },
-  { id: 'fund', name: '基金/指数', icon: '📊', invest: true },
-  { id: 'stock', name: '股票', icon: '📈', invest: true },
-  { id: 'bond', name: '债券/理财', icon: '🧾', invest: true },
-  { id: 'insurance', name: '保险/公积金', icon: '🛡️' },
-  { id: 'property', name: '房产/车', icon: '🏠' },
-  { id: 'other_asset', name: '其他资产', icon: '📦' },
-  { id: 'loan', name: '贷款', icon: '🏚️', liability: true },
-  { id: 'credit', name: '信用卡/消费贷', icon: '💸', liability: true, consumer: true },
+  { id: 'cash', name: '现金', icon: svg('banknote'), color: '#34C759', liquid: true },
+  { id: 'bank', name: '银行卡/活期', icon: svg('card'), color: '#007AFF', liquid: true },
+  { id: 'wallet', name: '微信/支付宝', icon: svg('phone'), color: '#30B0C7', liquid: true },
+  { id: 'deposit', name: '定期存款', icon: svg('bank'), color: '#5856D6', liquid: true },
+  { id: 'fund', name: '基金/指数', icon: svg('bars'), color: '#AF52DE', invest: true },
+  { id: 'stock', name: '股票', icon: svg('trend'), color: '#FF9500', invest: true },
+  { id: 'bond', name: '债券/理财', icon: svg('receipt'), color: '#00C7BE', invest: true },
+  { id: 'insurance', name: '保险/公积金', icon: svg('shield'), color: '#34C759' },
+  { id: 'property', name: '房产/车', icon: svg('home'), color: '#A2845E' },
+  { id: 'other_asset', name: '其他资产', icon: svg('box'), color: '#8E8E93' },
+  { id: 'loan', name: '贷款', icon: svg('debt'), color: '#FF3B30', liability: true },
+  { id: 'credit', name: '信用卡/消费贷', icon: svg('card'), color: '#FF3B30', liability: true, consumer: true },
 ];
 export const accountType = id => ACCOUNT_TYPES.find(t => t.id === id) || ACCOUNT_TYPES[7];
 

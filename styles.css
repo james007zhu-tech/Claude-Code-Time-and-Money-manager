@@ -1,30 +1,36 @@
 :root {
-  --bg: #f4f5f7;
+  /* 苹果风格：系统灰底、白卡片、系统蓝，细分隔线，不用投影 */
+  --bg: #f2f2f7;
   --card: #ffffff;
-  --text: #1c1f23;
-  --muted: #7a828c;
-  --line: #e6e8eb;
-  --brand: #12a37b;
-  --brand-soft: #e3f5ef;
-  --danger: #d9443a;
-  --chip: #f0f1f3;
-  --shadow: 0 1px 3px rgba(0, 0, 0, .06);
-  --radius: 14px;
-  --tabbar-h: 60px;
+  --text: #1c1c1e;
+  --muted: #8a8a8e;
+  --line: rgba(60, 60, 67, .13);
+  --brand: #007aff;
+  --brand-soft: rgba(0, 122, 255, .11);
+  --danger: #ff3b30;
+  --orange: #ff9500;
+  --green: #34c759;
+  --chip: rgba(118, 118, 128, .12);
+  --bar: rgba(249, 249, 249, .82);
+  --shadow: none;
+  --radius: 16px;
+  --tabbar-h: 54px;
   color-scheme: light;
 }
 @media (prefers-color-scheme: dark) {
   :root {
-    --bg: #111315;
-    --card: #1b1e21;
-    --text: #e8eaed;
-    --muted: #8d959f;
-    --line: #2a2e33;
-    --brand: #2bc193;
-    --brand-soft: #173a30;
-    --danger: #ef6a60;
-    --chip: #262a2f;
-    --shadow: none;
+    --bg: #000000;
+    --card: #1c1c1e;
+    --text: #ffffff;
+    --muted: #98989f;
+    --line: rgba(84, 84, 88, .55);
+    --brand: #0a84ff;
+    --brand-soft: rgba(10, 132, 255, .2);
+    --danger: #ff453a;
+    --orange: #ff9f0a;
+    --green: #30d158;
+    --chip: rgba(118, 118, 128, .24);
+    --bar: rgba(22, 22, 24, .8);
     color-scheme: dark;
   }
 }
@@ -526,3 +532,113 @@ details summary { cursor: pointer; padding: 6px 0; }
 .drop-hint small { font-size: 15px; font-weight: 400; }
 .desktop-only { display: none; }
 @media (hover: hover) and (pointer: fine) { .desktop-only { display: block; } }
+
+
+/* ================= 苹果风格 ================= */
+body { font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "PingFang SC", "Helvetica Neue", "Hiragino Sans GB", "Microsoft YaHei", sans-serif; letter-spacing: -.01em; -webkit-font-smoothing: antialiased; }
+
+/* 图标 */
+.ic { width: 1.2em; height: 1.2em; vertical-align: -.22em; flex: none; }
+.btn .ic, .chip .ic, .link .ic { margin-right: 6px; }
+.rec-meta .ic, .card-head .ic, .device-line .ic, .muted .ic { width: 1.05em; height: 1.05em; margin-right: 3px; }
+.tile { --tint: #8e8e93; width: 36px; height: 36px; border-radius: 9px; background: var(--tint); color: #fff; display: inline-flex; align-items: center; justify-content: center; flex: none; }
+.tile .ic { width: 21px; height: 21px; margin: 0; }
+.dot { --tint: #8e8e93; display: inline-block; width: 9px; height: 9px; border-radius: 50%; background: var(--tint); margin-right: 7px; }
+.rec-icon { background: none; width: 36px; height: 36px; border-radius: 9px; }
+.acct-row .tile { margin-right: 0; }
+
+/* 大标题 + 毛玻璃顶栏 */
+.topbar { background: var(--bar); -webkit-backdrop-filter: saturate(180%) blur(20px); backdrop-filter: saturate(180%) blur(20px); padding-bottom: 6px; }
+.topbar h1 { font-size: 30px; font-weight: 700; letter-spacing: -.02em; }
+
+/* 卡片 */
+.card, .kpi, .field, .batch-item { box-shadow: none; border-radius: var(--radius); }
+.card h3 { font-size: 17px; font-weight: 600; }
+.card-head { font-size: 13px; }
+h4 { text-transform: none; font-weight: 600; }
+.kpi b { font-weight: 600; letter-spacing: -.02em; }
+.big-number { font-weight: 700; letter-spacing: -.03em; }
+.rec, .acct-row, .act-row, .diag-row, .check, .month-row, .decision { border-top-width: .5px; }
+.rec-title { font-size: 16px; }
+.rec-amount { font-weight: 500; }
+.rec-amount.income { color: var(--green); }
+.pos-text { color: var(--green); }
+
+/* 按钮：实心蓝 / 浅蓝底蓝字 / 纯文字 */
+.btn { border-radius: 12px; background: var(--brand-soft); color: var(--brand); font-weight: 600; display: inline-flex; align-items: center; justify-content: center; }
+.btn.primary { background: var(--brand); color: #fff; }
+.btn.ghost { background: none; color: var(--brand); font-weight: 400; }
+.btn.danger { border: 0; background: rgba(255, 59, 48, .1); color: var(--danger); }
+.btn.small { border-radius: 10px; font-weight: 500; }
+.btn.huge { box-shadow: none; border-radius: 14px; font-size: 17px; padding: 14px; }
+.btn.full { display: flex; }
+a.btn { text-decoration: none; }
+.link { color: var(--brand); }
+.quick-row .btn { background: var(--card); color: var(--brand); box-shadow: none; font-weight: 500; }
+.banner { border-radius: 14px; }
+.banner .btn.primary { color: var(--brand); }
+
+/* 话筒：扁平实心圆 */
+.mic { background: var(--brand); box-shadow: none; display: inline-flex; align-items: center; justify-content: center; }
+.mic .ic { width: 42%; height: 42%; margin: 0; }
+.mic.big { width: 112px; height: 112px; }
+.mic.small { width: 40px; height: 40px; }
+.mic.recording { background: var(--danger); animation: pulse-flat 1.4s ease-out infinite; }
+@keyframes pulse-flat { 0% { box-shadow: 0 0 0 0 rgba(255, 59, 48, .35); } 100% { box-shadow: 0 0 0 20px rgba(255, 59, 48, 0); } }
+.hero-hint { font-size: 17px; font-weight: 600; }
+.act-label { display: flex; align-items: center; justify-content: center; gap: 4px; }
+.act-label .ic { width: 1.1em; height: 1.1em; }
+.act-clock { font-weight: 200; letter-spacing: -.02em; }
+
+/* 输入框：浅灰填充，无边框 */
+.input { border: 0; background: var(--chip); border-radius: 10px; }
+.input:focus { box-shadow: 0 0 0 2px var(--brand); }
+.field .input, .card .input { background: var(--chip); }
+select.input { -webkit-appearance: none; appearance: none; padding-right: 26px; background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 12 12' fill='none' stroke='%238a8a8e' stroke-width='1.8' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M3 4.5l3 3 3-3'/%3E%3C/svg%3E"); background-repeat: no-repeat; background-position: right 8px center; background-size: 12px; }
+.input.inline { padding-right: 26px; }
+input.input.inline { padding-right: 8px; }
+.live { background: var(--brand-soft); }
+.receipt-status { background: var(--brand-soft); }
+.receipt-status .ic { margin-right: 5px; color: var(--brand); }
+
+/* 胶囊标签、分段控件 */
+.chip { background: var(--chip); border: 0; display: inline-flex; align-items: center; }
+.chip.active { background: var(--brand); color: #fff; font-weight: 500; }
+.chip .ic { width: 1.05em; height: 1.05em; margin-right: 5px; }
+.cur-switch .chip { background: var(--brand-soft); color: var(--brand); }
+.cur-switch .chip .ic { margin: 0 0 0 6px; }
+.tag { background: var(--brand-soft); color: var(--brand); }
+.seg { background: var(--chip); border-radius: 9px; }
+.seg button { border-radius: 7px; color: var(--text); }
+.seg button.active { box-shadow: 0 1px 3px rgba(0, 0, 0, .12); }
+.badge { background: rgba(255, 149, 0, .15); color: #b86a00; border-radius: 5px; font-weight: 500; }
+.badge.company { background: var(--brand-soft); color: var(--brand); }
+.rec-amount.reimb { color: var(--orange); }
+@media (prefers-color-scheme: dark) { .badge { background: rgba(255, 159, 10, .2); color: var(--orange); } .rec-amount.reimb { color: var(--orange); } }
+.diag-row .seg button.active[data-tag="delegate"] { color: var(--orange); }
+.switch-row input, .batch-reimb input { accent-color: var(--green); }
+.check .ic { width: 22px; height: 22px; }
+.check.ok .ic { color: var(--green); } .check.warn .ic { color: var(--orange); } .check.na .ic { color: var(--muted); }
+.principle { background: var(--card); }
+.callout { background: var(--chip); }
+.batch-summary { background: var(--card); border: .5px solid var(--line); }
+.tagpill b { color: var(--brand); }
+
+/* 底部导航：毛玻璃、线条图标 */
+.tabbar { background: var(--bar); -webkit-backdrop-filter: saturate(180%) blur(20px); backdrop-filter: saturate(180%) blur(20px); border-top: .5px solid var(--line); }
+.tabbar button { font-size: 10px; font-weight: 500; gap: 3px; color: var(--muted); }
+.tabbar button .ic { width: 25px; height: 25px; }
+.tabbar button.active { color: var(--brand); font-weight: 500; }
+
+/* 弹层 */
+.sheet { background: rgba(0, 0, 0, .4); }
+.sheet-head { background: var(--bar); -webkit-backdrop-filter: saturate(180%) blur(20px); backdrop-filter: saturate(180%) blur(20px); border-bottom: .5px solid var(--line); }
+.sheet-head h2 { font-weight: 600; }
+.toast { background: rgba(50, 50, 52, .92); -webkit-backdrop-filter: blur(20px); backdrop-filter: blur(20px); border-radius: 14px; font-weight: 500; }
+.toast-action { color: #64b5ff; }
+.drop-hint { background: rgba(0, 122, 255, .9); }
+.drop-hint .ic { width: 56px; height: 56px; }
+.month-nav .btn { background: none; }
+.card-head h3 { color: var(--text); }
+.examples .hint { text-align: center; }
+.card .kpi { background: var(--chip); }
