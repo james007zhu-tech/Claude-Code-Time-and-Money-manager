@@ -379,10 +379,18 @@ export async function renderWealth() {
   updateFV();
 }
 
+// 微信、支付宝用各自的图形（统一成同一种线条和颜色），其他账户按类型
+function accountIcon(account, type) {
+  const name = `${account.name} ${(account.aliases || []).join(' ')}`.toLowerCase();
+  if (/微信|wechat|weixin/.test(name)) return svg('wechat');
+  if (/支付宝|alipay/.test(name)) return svg('alipay');
+  return type.icon;
+}
+
 // 账户列表：个人 / 公司分开；余额 = 最近核对的余额 + 之后的流水
 function accountsCard(sheet, accounts, month) {
   const row = r => `<div class="acct-row" data-account="${r.account.id}">
-    <span class="tile" style="--tint:${r.type.color}">${r.type.icon}</span>
+    <span class="tile">${accountIcon(r.account, r.type)}</span>
     <div class="grow"><div>${esc(r.account.name)}</div><div class="muted small">${[
       r.type.name,
       r.updated ? `${dayLabel(r.updated).split(' ')[0]}核对` : '未核对',

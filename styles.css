@@ -669,3 +669,7 @@ input.input.inline { padding-right: 8px; }
   .mic.recording .ic { animation: none; }
 }
 .hero { overflow: visible; }
+
+/* 图标统一成一个色调：朱砂底、白色线条 */
+.tile { background: var(--brand); --tint: var(--brand); }
+.dot { display: none; }
