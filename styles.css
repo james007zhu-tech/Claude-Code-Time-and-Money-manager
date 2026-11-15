@@ -5,9 +5,10 @@
   --text: #1c1c1e;
   --muted: #8a8a8e;
   --line: rgba(60, 60, 67, .13);
-  --brand: #007aff;
-  --brand-soft: rgba(0, 122, 255, .11);
-  --danger: #ff3b30;
+  /* 主色：朱砂。删除等危险操作用更深的绛红，和主色分开 */
+  --brand: #d4472f;
+  --brand-soft: rgba(212, 71, 47, .11);
+  --danger: #9b1c1c;
   --orange: #ff9500;
   --green: #34c759;
   --chip: rgba(118, 118, 128, .12);
@@ -24,9 +25,9 @@
     --text: #ffffff;
     --muted: #98989f;
     --line: rgba(84, 84, 88, .55);
-    --brand: #0a84ff;
-    --brand-soft: rgba(10, 132, 255, .2);
-    --danger: #ff453a;
+    --brand: #ff6b52;
+    --brand-soft: rgba(255, 107, 82, .18);
+    --danger: #e0484d;
     --orange: #ff9f0a;
     --green: #30d158;
     --chip: rgba(118, 118, 128, .24);
@@ -642,3 +643,29 @@ input.input.inline { padding-right: 8px; }
 .card-head h3 { color: var(--text); }
 .examples .hint { text-align: center; }
 .card .kpi { background: var(--chip); }
+
+
+/* ---------- 朱砂主色的配套 ---------- */
+.btn.danger { background: rgba(155, 28, 28, .09); }
+@media (prefers-color-scheme: dark) { .btn.danger { background: rgba(224, 72, 77, .16); } }
+.toast-action { color: #ff9c8a; }
+.drop-hint { background: rgba(212, 71, 47, .92); }
+.neg-text { color: var(--danger); }
+
+/* 正在录音：颜色不变，向外一圈圈扩散的波纹 + 话筒轻微起伏 */
+.mic { position: relative; }
+.mic.recording { background: var(--brand); animation: none; box-shadow: none; }
+.mic.recording::before, .mic.recording::after {
+  content: ""; position: absolute; inset: 0; border-radius: 50%;
+  border: 2px solid var(--brand); opacity: 0; pointer-events: none;
+  animation: ripple 1.8s cubic-bezier(.2, .6, .4, 1) infinite;
+}
+.mic.recording::after { animation-delay: .9s; }
+.mic.recording .ic { animation: breathe 1.2s ease-in-out infinite; }
+@keyframes ripple { 0% { transform: scale(1); opacity: .65; } 100% { transform: scale(1.75); opacity: 0; } }
+@keyframes breathe { 0%, 100% { transform: scale(1); } 50% { transform: scale(1.14); } }
+@media (prefers-reduced-motion: reduce) {
+  .mic.recording::before, .mic.recording::after { animation: none; opacity: .5; transform: scale(1.25); }
+  .mic.recording .ic { animation: none; }
+}
+.hero { overflow: visible; }
